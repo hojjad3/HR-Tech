@@ -24,7 +24,7 @@ class TechnicalExam(BaseModel):
     candidate_email: str
     job_title: str
     product_summary: str
-    questions: list[MultipleChoiceQuestion] = Field(min_length=1, max_length=10)
+    questions: list[MultipleChoiceQuestion] = Field(min_length=1, max_length=30)
 
 
 EXAM_GEN_SYSTEM_PROMPT = """You are an Expert AI Technical Examiner.

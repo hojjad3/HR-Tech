@@ -269,10 +269,10 @@ def build_gui():
                             gr.Markdown("### ⚙️ Exam & Email Dispatch Settings")
                             num_questions_slider = gr.Slider(
                                 minimum=1,
-                                maximum=10,
+                                maximum=30,
                                 value=3,
                                 step=1,
-                                label="Number of MCQ Questions in Exam (English Only)",
+                                label="Number of MCQ Questions in Exam",
                             )
                             with gr.Row():
                                 sender_email_input = gr.Textbox(

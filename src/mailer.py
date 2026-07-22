@@ -11,13 +11,16 @@ def format_exam_html(exam: TechnicalExam) -> str:
     questions_html = ""
     for idx, q in enumerate(exam.questions, start=1):
         options_html = "".join(
-            [f"<li><strong>{chr(65+i)}:</strong> {opt}</li>" for i, opt in enumerate(q.options)]
+            [
+                f"<li style='margin-bottom: 8px; color: #0f172a; font-size: 14px;'><strong style='color: #2563eb;'>{chr(65+i)}:</strong> {opt}</li>"
+                for i, opt in enumerate(q.options)
+            ]
         )
         questions_html += f"""
-        <div style="background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 15px; margin-bottom: 20px; border-radius: 6px;">
-            <h4 style="margin-top: 0; color: #1e293b;">Q{idx}: [{q.topic}]</h4>
-            <p style="font-size: 15px; color: #334155;"><strong>{q.question_text}</strong></p>
-            <ul style="list-style-type: none; padding-left: 0; color: #475569;">
+        <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; padding: 18px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <h4 style="margin-top: 0; color: #0f172a; font-size: 16px; font-weight: 700; margin-bottom: 10px;">Q{idx}: [{q.topic}]</h4>
+            <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin-bottom: 14px; line-height: 1.5;">{q.question_text}</p>
+            <ul style="list-style-type: none; padding-left: 0; margin-bottom: 0;">
                 {options_html}
             </ul>
         </div>
@@ -26,26 +29,26 @@ def format_exam_html(exam: TechnicalExam) -> str:
     html_content = f"""
     <!DOCTYPE html>
     <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; max-width: 680px; margin: 0 auto; padding: 20px;">
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #0f172a; max-width: 720px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 25px; text-align: center; border-radius: 8px 8px 0 0;">
             <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Technical Assessment Invitation</h1>
-            <p style="color: #94a3b8; margin-top: 5px;">Role: {exam.job_title}</p>
+            <p style="color: #cbd5e1; margin-top: 5px;">Role: {exam.job_title}</p>
         </div>
-        <div style="border: 1px solid #e2e8f0; border-top: none; padding: 25px; border-radius: 0 0 8px 8px;">
-            <p>Dear <strong>{exam.candidate_name}</strong>,</p>
-            <p>Congratulations! Based on our automated screening of your experience, we are thrilled to invite you to the technical evaluation phase for the <strong>{exam.job_title}</strong> role.</p>
+        <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-top: none; padding: 25px; border-radius: 0 0 8px 8px;">
+            <p style="color: #0f172a;">Dear <strong>{exam.candidate_name}</strong>,</p>
+            <p style="color: #0f172a;">Congratulations! Based on our automated screening of your experience, we are thrilled to invite you to the technical evaluation phase for the <strong>{exam.job_title}</strong> role.</p>
             
-            <div style="background-color: #eff6ff; padding: 12px 16px; border-radius: 6px; margin: 20px 0;">
-                <p style="margin: 0; color: #1e40af; font-size: 14px;"><strong>Project Overview:</strong> {exam.product_summary}</p>
+            <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; padding: 14px 18px; border-radius: 6px; margin: 20px 0;">
+                <p style="margin: 0; color: #0369a1; font-size: 14px; font-weight: 600;"><strong>Project Overview:</strong> {exam.product_summary}</p>
             </div>
 
-            <h3>Technical Multiple-Choice Assessment</h3>
-            <p>Please review and answer the following tailored assessment questions:</p>
+            <h3 style="color: #0f172a; margin-top: 25px;">Technical Multiple-Choice Assessment</h3>
+            <p style="color: #334155;">Please review and answer the following tailored assessment questions:</p>
             
             {questions_html}
 
-            <p style="margin-top: 25px;">Please reply directly to this email with your chosen answers (e.g., Q1: B, Q2: A, Q3: B) within 48 hours.</p>
-            <p>Best regards,<br><strong>Talent Acquisition & AI Hiring Automation Team</strong></p>
+            <p style="margin-top: 25px; color: #0f172a;">Please reply directly to this email with your chosen answers (e.g., Q1: B, Q2: A, Q3: B) within 48 hours.</p>
+            <p style="color: #0f172a;">Best regards,<br><strong>Talent Acquisition & AI Hiring Automation Team</strong></p>
         </div>
     </body>
     </html>
