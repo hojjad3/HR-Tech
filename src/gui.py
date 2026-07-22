@@ -591,7 +591,7 @@ def build_gui():
             """
             <div class="hero-header">
                 <div>
-                    <h1 class="hero-title">HR AI Assistant 🚀</h1>
+                    <h1 class="hero-title">HR AI Assistant</h1>
                     <p class="hero-subtitle">Autonomous Resume Screening, Reverse-Engineered RAG Analysis & MCQ Exam Automation</p>
                 </div>
                 <div class="hero-badges">
@@ -608,7 +608,7 @@ def build_gui():
             # ---------------------------------------------------------
             # TAB 1: 🚀 NEW SCREENING RUN
             # ---------------------------------------------------------
-            with gr.TabItem("🚀 New Screening Run"):
+            with gr.TabItem("New Screening Run"):
                 with gr.Row():
                     with gr.Column(scale=1):
                         user_prompt_input = gr.Textbox(
@@ -680,7 +680,7 @@ def build_gui():
                                     value=True,
                                 )
 
-                        run_btn = gr.Button("🚀 Launch AI Screening Pipeline", variant="primary", elem_classes=["btn-primary"])
+                        run_btn = gr.Button("Launch AI Screening Pipeline", variant="primary", elem_classes=["btn-primary"])
                         status_output = gr.Markdown("Ready to process resumes.")
 
             # ---------------------------------------------------------
