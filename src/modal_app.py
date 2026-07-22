@@ -38,7 +38,7 @@ def run_pipeline_modal(user_prompt: str, resume_files: list[dict]) -> dict:
     from src.exam_generator import generate_technical_exam
     from src.mailer import send_candidate_exam_email
     from src.matcher import evaluate_candidate
-    from src.parser import parse_resume_pdf
+    from src.parser import parse_resume_pdf, ParsedResume, extract_candidate_name, extract_email
     from src.strategy import generate_hiring_strategy
     from src.vector_store import VectorStoreManager
 
@@ -62,7 +62,19 @@ def run_pipeline_modal(user_prompt: str, resume_files: list[dict]) -> dict:
             with open(temp_path, "wb") as f:
                 f.write(content_bytes)
 
-            parsed = parse_resume_pdf(temp_path)
+            if file_name.lower().endswith(".pdf"):
+                parsed = parse_resume_pdf(temp_path)
+            else:
+                with open(temp_path, "r", encoding="utf-8", errors="ignore") as f:
+                    text = f.read()
+                parsed = ParsedResume(
+                    file_name=file_name,
+                    candidate_name=extract_candidate_name(text, temp_path),
+                    candidate_email=extract_email(text),
+                    raw_text=text,
+                    char_count=len(text),
+                )
+
             parsed_resumes.append(parsed)
             vs_manager.index_resume(parsed)
 
@@ -137,7 +149,7 @@ def main():
     """.encode("utf-8")
 
     resume_files = [
-        {"file_name": "jane_doe_resume.pdf", "content_bytes": sample_resume_content}
+        {"file_name": "jane_doe_resume.txt", "content_bytes": sample_resume_content}
     ]
 
     print("[MODAL LOCAL ENTRYPOINT] Triggering remote Modal Pipeline...")
@@ -145,6 +157,9 @@ def main():
     print("\n--- Modal Execution Output Summary ---")
     print(f"Target Role: {res['strategy']['job_title']}")
     print(f"Processed: {res['total_processed']}, Passed: {res['total_passed']}")
+    for cand in res["evaluated_candidates"]:
+        status = "PASSED ✅" if cand["passed"] else "FAILED ❌"
+        print(f"  - Candidate: {cand['candidate_name']} ({cand['candidate_email']}) -> {status} (Score: {cand['match_score']}/100)")
 
 
 if __name__ == "__main__":
