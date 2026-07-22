@@ -161,7 +161,12 @@ def run_pipeline(user_prompt: str, resume_paths: list[str]) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="HR AI Assistant Pipeline CLI")
+    parser = argparse.ArgumentParser(description="HR AI Assistant Pipeline CLI & Web GUI")
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Launch the Gradio Web GUI dashboard",
+    )
     parser.add_argument(
         "--prompt",
         type=str,
@@ -175,6 +180,13 @@ def main():
         help="Directory containing PDF resumes",
     )
     args = parser.parse_args()
+
+    if args.gui:
+        from src.gui import build_gui
+        print("🚀 [GUI] Launching HR AI Assistant Web Interface on http://127.0.0.1:7860 ...")
+        app_gui = build_gui()
+        app_gui.launch(server_name="127.0.0.1", server_port=7860, share=False)
+        return
 
     # Always generate/refresh synthetic test files if no custom PDFs are supplied
     pdf_files = [os.path.join(args.resumes_dir, f) for f in os.listdir(args.resumes_dir)] if os.path.exists(args.resumes_dir) else []
