@@ -201,7 +201,6 @@ def process_screening(
         if gf_manager and session_id:
             for rec in candidate_records:
                 if rec.get("google_form_url"):
-                    # Find form_info from manager
                     form_info_data = {
                         "candidate_name": rec["candidate_name"],
                         "candidate_email": rec["candidate_email"],
@@ -213,7 +212,7 @@ def process_screening(
                     if form_info_data["form_id"]:
                         storage.save_google_form(session_id, form_info_data)
 
-    status_msg = f"✅ Pipeline Completed! Processed {len(parsed_resumes)} candidates. Session ID: {session_id or 'Not Stored'}"
+    status_msg = f"✅ Pipeline Execution Finished! Processed {len(parsed_resumes)} resumes. Session: `{session_id or 'Unsaved'}`"
 
     must_have_str = "\n".join([f"• {s}" for s in strategy.must_have_skills])
     nice_have_str = "\n".join([f"• {s}" for s in strategy.nice_to_have_skills])
@@ -270,26 +269,29 @@ def load_session_details_view(session_id: str):
     candidates = details.get("candidates", [])
 
     html = f"""
-    <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 800px;">
-        <h3 style="color: #e2e8f0; margin-bottom: 8px;">📋 Session: {details['session_id']}</h3>
-        <p style="color: #94a3b8; font-size: 13px;">Created: {details['timestamp']}</p>
-        <div style="background: #1e293b; padding: 14px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #3b82f6;">
-            <p style="color: #93c5fd; font-weight: 600; margin: 0;">🎯 {strategy.get('job_title', 'N/A')}</p>
-            <p style="color: #cbd5e1; font-size: 13px; margin-top: 6px;">{strategy.get('product_summary', 'N/A')}</p>
+    <div style="font-family: 'Plus Jakarta Sans', system-ui, sans-serif; max-width: 1000px; color: #f8fafc;">
+        <div style="background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); padding: 18px 24px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); margin-bottom: 16px;">
+            <h3 style="color: #6366f1; margin: 0 0 6px 0; font-size: 18px; font-weight: 700;">📋 Session: {details['session_id']}</h3>
+            <p style="color: #94a3b8; font-size: 13px; margin: 0 0 12px 0;">Executed: {details['timestamp']}</p>
+            <div style="background: rgba(15, 23, 42, 0.6); padding: 14px; border-radius: 8px; border-left: 4px solid #6366f1;">
+                <p style="color: #818cf8; font-weight: 700; margin: 0; font-size: 15px;">🎯 Target Role: {strategy.get('job_title', 'N/A')}</p>
+                <p style="color: #cbd5e1; font-size: 13px; margin-top: 6px; line-height: 1.5;">{strategy.get('product_summary', 'N/A')}</p>
+            </div>
         </div>
-        <h4 style="color: #e2e8f0;">Candidates ({len(candidates)})</h4>
+        
+        <h4 style="color: #f8fafc; font-size: 16px; margin: 16px 0 10px 0;">Evaluated Candidates ({len(candidates)})</h4>
     """
     for c in candidates:
-        status_color = "#22c55e" if c["passed"] else "#ef4444"
+        status_color = "#10b981" if c["passed"] else "#f43f5e"
         status_text = "PASSED ✅" if c["passed"] else "FAILED ❌"
         html += f"""
-        <div style="background: #0f172a; padding: 12px; border-radius: 8px; margin: 8px 0; border: 1px solid #334155;">
+        <div style="background: rgba(15, 23, 42, 0.7); padding: 16px; border-radius: 10px; margin-bottom: 10px; border: 1px solid rgba(255, 255, 255, 0.06);">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: #e2e8f0; font-weight: 600;">{c['candidate_name']}</span>
-                <span style="color: {status_color}; font-weight: 700;">{c['match_score']}/100 — {status_text}</span>
+                <span style="color: #f8fafc; font-weight: 700; font-size: 15px;">{c['candidate_name']}</span>
+                <span style="color: {status_color}; font-weight: 800; font-size: 14px; background: rgba(0,0,0,0.3); padding: 4px 12px; border-radius: 20px;">{c['match_score']}/100 — {status_text}</span>
             </div>
-            <p style="color: #64748b; font-size: 12px; margin: 4px 0;">{c['candidate_email']}</p>
-            <p style="color: #94a3b8; font-size: 13px; margin-top: 6px;">{c['reasoning'][:200]}...</p>
+            <p style="color: #64748b; font-size: 13px; margin: 4px 0 8px 0;">✉️ {c['candidate_email']}</p>
+            <p style="color: #cbd5e1; font-size: 13px; margin: 0; line-height: 1.5; background: rgba(30, 41, 59, 0.4); padding: 10px; border-radius: 6px;">{c['reasoning']}</p>
         </div>
         """
     html += "</div>"
@@ -356,17 +358,246 @@ def load_stored_responses(form_id: str):
     return pd.DataFrame(table_data)
 
 
-def build_gui():
-    custom_css = """
-    .gradio-container { max-width: 1200px !important; }
-    .dark { background-color: #0f172a !important; }
-    """
+# -----------------------------------------------------------------------------
+# ULTRA-SLEEK MODERN PROFESSIONAL CSS
+# -----------------------------------------------------------------------------
+MODERN_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
-    with gr.Blocks(title="HR AI Assistant - Resume Screening & Assessment Pipeline", css=custom_css, theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) as app:
-        gr.Markdown(
+* {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+}
+
+body, .gradio-container {
+    background-color: #090d16 !important;
+    max-width: 1400px !important;
+    margin: 0 auto !important;
+}
+
+/* Header Banner */
+.hero-header {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.9) 100%);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 28px 36px;
+    margin-bottom: 24px;
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.hero-title {
+    font-size: 28px;
+    font-weight: 800;
+    background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 50%, #818cf8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin: 0 0 6px 0;
+    letter-spacing: -0.5px;
+}
+
+.hero-subtitle {
+    color: #94a3b8;
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+}
+
+.hero-badges {
+    display: flex;
+    gap: 10px;
+}
+
+.hero-badge {
+    background: rgba(99, 102, 241, 0.15);
+    color: #a5b4fc;
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+/* Tabs Styling */
+.tabs {
+    background: transparent !important;
+    border: none !important;
+}
+
+.tab-nav {
+    background: rgba(15, 23, 42, 0.8) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    padding: 6px !important;
+    border-radius: 12px !important;
+    margin-bottom: 20px !important;
+    gap: 4px !important;
+}
+
+.tab-nav button {
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    color: #94a3b8 !important;
+    border: none !important;
+    padding: 10px 20px !important;
+    transition: all 0.2s ease !important;
+}
+
+.tab-nav button.selected {
+    background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%) !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35) !important;
+}
+
+.tab-nav button:hover:not(.selected) {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #f1f5f9 !important;
+}
+
+/* Card Containers & Blocks */
+.block, .form, .group {
+    background: rgba(15, 23, 42, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 14px !important;
+    box-shadow: none !important;
+}
+
+/* Label styling overrides — Remove blocky blue headers */
+label span, .block-title, label {
+    background: transparent !important;
+    color: #cbd5e1 !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    text-transform: none !important;
+    padding: 0 !important;
+}
+
+/* Text Inputs & Textareas */
+input[type="text"], textarea, select {
+    background: rgba(30, 41, 59, 0.7) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    color: #f8fafc !important;
+    border-radius: 10px !important;
+    font-size: 14px !important;
+    padding: 12px 16px !important;
+    transition: all 0.2s ease !important;
+}
+
+input[type="text"]:focus, textarea:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
+    background: rgba(30, 41, 59, 0.95) !important;
+}
+
+/* Primary Action Button */
+.btn-primary, button.primary {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
+    border: none !important;
+    border-radius: 12px !important;
+    padding: 14px 28px !important;
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4) !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    cursor: pointer !important;
+}
+
+.btn-primary:hover, button.primary:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 25px rgba(99, 102, 241, 0.55) !important;
+    background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%) !important;
+}
+
+/* Secondary Button */
+.btn-secondary, button.secondary {
+    background: rgba(30, 41, 59, 0.8) !important;
+    color: #e2e8f0 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+
+.btn-secondary:hover, button.secondary:hover {
+    background: rgba(51, 65, 85, 0.9) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Tables & Dataframes */
+.dataframe-container, table {
+    border-radius: 12px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+table th {
+    background: #1e293b !important;
+    color: #94a3b8 !important;
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+table td {
+    background: rgba(15, 23, 42, 0.5) !important;
+    color: #e2e8f0 !important;
+    font-size: 13px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Radio & Checkbox Cards */
+.gr-radio, .gr-checkbox {
+    background: transparent !important;
+}
+
+/* File Upload Component */
+.file-preview, .upload-container, .gr-box {
+    background: rgba(30, 41, 59, 0.4) !important;
+    border: 2px dashed rgba(99, 102, 241, 0.3) !important;
+    border-radius: 14px !important;
+}
+
+/* Markdown Text */
+.markdown-text {
+    color: #cbd5e1 !important;
+}
+
+.markdown-text h3 {
+    color: #f8fafc !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+}
+
+/* Sliders */
+input[type="range"] {
+    accent-color: #6366f1 !important;
+}
+"""
+
+
+def build_gui():
+    with gr.Blocks(title="HR AI Assistant — Autonomous Screening Engine", css=MODERN_CSS) as app:
+        
+        # Hero Header Banner
+        gr.HTML(
             """
-            # 🤖 HR AI Assistant
-            ### Autonomous Resume Screening, RAG Analysis, Adaptive MCQ Assessment, Google Forms & Email Automation Pipeline
+            <div class="hero-header">
+                <div>
+                    <h1 class="hero-title">HR AI Assistant 🚀</h1>
+                    <p class="hero-subtitle">Autonomous Resume Screening, Reverse-Engineered RAG Analysis & MCQ Exam Automation</p>
+                </div>
+                <div class="hero-badges">
+                    <span class="hero-badge">Groq Llama 3.3 70B</span>
+                    <span class="hero-badge">FastEmbed RAG</span>
+                    <span class="hero-badge">Google Forms API</span>
+                </div>
+            </div>
             """
         )
 
@@ -377,22 +608,22 @@ def build_gui():
             # ---------------------------------------------------------
             with gr.TabItem("🚀 New Screening Run"):
                 with gr.Row():
-                    with gr.Column(scale=2):
+                    with gr.Column(scale=1):
                         user_prompt_input = gr.Textbox(
-                            label="Product Concept / Business Request (Arabic or English)",
+                            label="Product Concept / Technical Business Requirements (Arabic or English)",
                             placeholder="يا سيدي أنا بدي أبني تطبيق قانوني بيساعد المحامين بالأردن...",
-                            lines=4,
+                            lines=5,
                             value="يا سيدي أنا بدي أبني تطبيق قانوني بيساعد المحامين بالأردن، بحيث يرفعوا القضية والـ AI يعمل تحليلات للنسخ والأحكام القديمة ويرتبلهم ملخص واستشارات بناءً على القانون المدني.",
                         )
 
                         input_mode_radio = gr.Radio(
                             choices=["Drag & Drop Files", "Folder Path Input"],
                             value="Drag & Drop Files",
-                            label="Resume Input Mode",
+                            label="Resume Ingestion Source Mode",
                         )
 
                         file_upload_input = gr.File(
-                            label="Upload Resume PDFs / TXT files",
+                            label="Upload Candidate Resumes (PDF / TXT / DOCX)",
                             file_count="multiple",
                             file_types=[".pdf", ".txt", ".docx"],
                             visible=True,
@@ -404,73 +635,71 @@ def build_gui():
                             visible=False,
                         )
 
+                    with gr.Column(scale=1):
                         with gr.Group():
-                            gr.Markdown("### ⚙️ Screening & Exam Settings")
-                            with gr.Row():
-                                num_questions_slider = gr.Slider(
-                                    minimum=1,
-                                    maximum=30,
-                                    value=5,
-                                    step=1,
-                                    label="Number of MCQ Questions",
-                                )
-                                pass_threshold_slider = gr.Slider(
-                                    minimum=30,
-                                    maximum=100,
-                                    value=settings.PASS_THRESHOLD,
-                                    step=5,
-                                    label="Pass Threshold (%)",
-                                )
+                            gr.Markdown("### ⚙️ Screening & Candidate Thresholds")
+                            num_questions_slider = gr.Slider(
+                                minimum=1,
+                                maximum=30,
+                                value=5,
+                                step=1,
+                                label="MCQ Questions Per Candidate Exam",
+                            )
+                            pass_threshold_slider = gr.Slider(
+                                minimum=30,
+                                maximum=100,
+                                value=settings.PASS_THRESHOLD,
+                                step=5,
+                                label="Minimum Qualification Threshold (%)",
+                            )
 
                         with gr.Group():
-                            gr.Markdown("### 📧 Email & Google Forms Settings")
+                            gr.Markdown("### 📧 Email Dispatch & Google Forms Options")
+                            sender_email_input = gr.Textbox(
+                                label="Sender Email Address",
+                                value="onboarding@resend.dev",
+                                placeholder="onboarding@resend.dev",
+                            )
+                            recipient_email_override = gr.Textbox(
+                                label="Override Recipient Email (Optional)",
+                                placeholder="Leave blank to use candidate's extracted email",
+                            )
                             with gr.Row():
-                                sender_email_input = gr.Textbox(
-                                    label="Sender Email Address",
-                                    value="onboarding@resend.dev",
-                                    placeholder="onboarding@resend.dev",
+                                auto_send_email_chk = gr.Checkbox(
+                                    label="Auto-Dispatch Resend Email",
+                                    value=False,
                                 )
-                                recipient_email_override = gr.Textbox(
-                                    label="Override Recipient Email (Optional)",
-                                    placeholder="Leave blank to use candidate's extracted email",
+                                create_google_forms_chk = gr.Checkbox(
+                                    label="Create Google Form Exam",
+                                    value=True,
+                                )
+                                store_results_chk = gr.Checkbox(
+                                    label="Persist to SQLite Database",
+                                    value=True,
                                 )
 
-                        with gr.Row():
-                            auto_send_email_chk = gr.Checkbox(
-                                label="Auto-Send MCQ Exam Email via Resend API",
-                                value=False,
-                            )
-                            create_google_forms_chk = gr.Checkbox(
-                                label="📝 Create Google Form for Each Candidate",
-                                value=True,
-                            )
-                            store_results_chk = gr.Checkbox(
-                                label="Save Results to Persistent SQLite DB",
-                                value=True,
-                            )
-
-                        run_btn = gr.Button("🚀 Run AI Screening Pipeline", variant="primary", size="lg")
-                        status_output = gr.Markdown("Ready for execution.")
+                        run_btn = gr.Button("🚀 Launch AI Screening Pipeline", variant="primary", elem_classes=["btn-primary"])
+                        status_output = gr.Markdown("Ready to process resumes.")
 
             # ---------------------------------------------------------
-            # TAB 2: 🎯 PRODUCT STRATEGY & TECH REQUIREMENTS
+            # TAB 2: 🎯 REVERSE-ENGINEERED STRATEGY
             # ---------------------------------------------------------
             with gr.TabItem("🎯 Product Strategy"):
                 with gr.Row():
-                    job_title_out = gr.Textbox(label="Target Job Role", interactive=False)
+                    job_title_out = gr.Textbox(label="Target Reverse-Engineered Role", interactive=False)
                 with gr.Row():
-                    product_summary_out = gr.Textbox(label="Product Concept Architecture", lines=3, interactive=False)
+                    product_summary_out = gr.Textbox(label="AI Product Concept Architecture", lines=3, interactive=False)
                 with gr.Row():
-                    must_have_out = gr.Textbox(label="Must-Have Technical Skills", lines=5, interactive=False)
-                    nice_have_out = gr.Textbox(label="Nice-to-Have Skills", lines=5, interactive=False)
+                    must_have_out = gr.Textbox(label="Must-Have Technical Stack", lines=5, interactive=False)
+                    nice_have_out = gr.Textbox(label="Nice-to-Have Advanced Skills", lines=5, interactive=False)
                 with gr.Row():
                     eval_crit_out = gr.Textbox(label="Evaluation Criteria Benchmarks", lines=5, interactive=False)
 
             # ---------------------------------------------------------
-            # TAB 3: 📊 CANDIDATE MATCHING DASHBOARD
+            # TAB 3: 📊 CANDIDATE RAG MATCHING DASHBOARD
             # ---------------------------------------------------------
-            with gr.TabItem("📊 Candidate Matching Dashboard"):
-                gr.Markdown("### Candidate RAG Evaluation & Target Emails")
+            with gr.TabItem("📊 Candidate Dashboard"):
+                gr.Markdown("### Candidate RAG Evaluation & Qualification Results")
                 candidates_dataframe = gr.Dataframe(
                     headers=["Candidate Name", "Extracted / Target Email", "Match Score", "Status", "Google Form", "AI Reasoning"],
                     datatype=["str", "str", "number", "str", "str", "str"],
@@ -482,17 +711,17 @@ def build_gui():
             # ---------------------------------------------------------
             # TAB 4: 📝 MCQ ASSESSMENT VIEWER
             # ---------------------------------------------------------
-            with gr.TabItem("📝 MCQ Assessment Viewer"):
-                gr.Markdown("### Generated Multiple-Choice Technical Exams (English Only)")
-                exams_html_out = gr.HTML(value="No exam generated yet.")
+            with gr.TabItem("📝 MCQ Exam Viewer"):
+                gr.Markdown("### Generated Technical Assessment Questions")
+                exams_html_out = gr.HTML(value="No exams generated yet.")
 
             # ---------------------------------------------------------
             # TAB 5: 📋 GOOGLE FORMS & RESPONSES
             # ---------------------------------------------------------
-            with gr.TabItem("📋 Google Forms & Responses"):
-                gr.Markdown("### 📝 Google Forms Dashboard — View Created Forms & Fetch Candidate Responses")
+            with gr.TabItem("📋 Google Forms Hub"):
+                gr.Markdown("### 📝 Active Candidate Google Forms")
 
-                refresh_forms_btn = gr.Button("🔄 Refresh Forms List", variant="secondary")
+                refresh_forms_btn = gr.Button("🔄 Refresh Created Forms", variant="secondary", elem_classes=["btn-secondary"])
                 forms_dataframe = gr.Dataframe(
                     headers=["Candidate", "Email", "Form URL", "Questions", "Responses", "Created", "Job Title"],
                     interactive=False,
@@ -500,13 +729,13 @@ def build_gui():
                 )
 
                 gr.Markdown("---")
-                gr.Markdown("### 📥 Fetch Responses from Google Forms API")
+                gr.Markdown("### 📥 Live Google Forms Response Fetcher & Auto-Grader")
                 with gr.Row():
                     form_id_input = gr.Textbox(
                         label="Google Form ID",
-                        placeholder="Enter the Form ID to fetch responses for",
+                        placeholder="Paste Form ID here...",
                     )
-                    fetch_responses_btn = gr.Button("📥 Fetch & Grade Responses", variant="primary")
+                    fetch_responses_btn = gr.Button("📥 Fetch & Grade Submissions", variant="primary", elem_classes=["btn-primary"])
 
                 fetch_status_output = gr.Markdown("")
                 responses_dataframe = gr.Dataframe(
@@ -516,32 +745,32 @@ def build_gui():
                 )
 
             # ---------------------------------------------------------
-            # TAB 6: 📁 SAVED RESULTS & EXPORT HISTORY
+            # TAB 6: 📁 HISTORICAL SESSIONS & EXPORTS
             # ---------------------------------------------------------
-            with gr.TabItem("📁 Saved Results & Export History"):
-                gr.Markdown("### Historical Screening Sessions (SQLite Database)")
-                refresh_history_btn = gr.Button("🔄 Refresh Session History", variant="secondary")
+            with gr.TabItem("📁 History & Exports"):
+                gr.Markdown("### Historical Screening Sessions")
+                refresh_history_btn = gr.Button("🔄 Refresh Session History", variant="secondary", elem_classes=["btn-secondary"])
                 history_dataframe = gr.Dataframe(
                     headers=["Session ID", "Timestamp", "Target Job Title", "Product Concept"],
                     interactive=False,
                 )
 
                 gr.Markdown("---")
-                gr.Markdown("### 🔍 Session Details Preview")
+                gr.Markdown("### 🔍 Session Details & Downloads")
                 with gr.Row():
                     selected_session_id_input = gr.Textbox(
-                        label="Enter Session ID to Preview / Export",
-                        placeholder="RUN_20260722_220000",
+                        label="Enter Session ID",
+                        placeholder="e.g. RUN_20260723_001500",
                     )
                     with gr.Column():
-                        preview_session_btn = gr.Button("🔍 Preview Session", variant="secondary")
-                        export_files_btn = gr.Button("📥 Generate Export Files (CSV & JSON)", variant="primary")
+                        preview_session_btn = gr.Button("🔍 Preview Session Details", variant="secondary", elem_classes=["btn-secondary"])
+                        export_files_btn = gr.Button("📥 Generate CSV & JSON Exports", variant="primary", elem_classes=["btn-primary"])
 
-                session_preview_html = gr.HTML(value="Select a session to preview.")
+                session_preview_html = gr.HTML(value="Select a session above to inspect details.")
 
                 with gr.Row():
-                    csv_download_file = gr.File(label="Download CSV Export")
-                    json_download_file = gr.File(label="Download JSON Export")
+                    csv_download_file = gr.File(label="Download CSV Report")
+                    json_download_file = gr.File(label="Download JSON Snapshot")
 
         # ---------------------------------------------------------
         # EVENT HANDLERS & CALLBACKS
@@ -605,7 +834,6 @@ def build_gui():
             outputs=[session_preview_html],
         )
 
-        # Google Forms tab handlers
         refresh_forms_btn.click(
             fn=load_google_forms_table,
             inputs=[],
@@ -623,5 +851,5 @@ def build_gui():
 
 if __name__ == "__main__":
     gui = build_gui()
-    print("[GUI] Launching HR AI Assistant Web Interface on http://127.0.0.1:7860 ...")
-    gui.launch(server_name="127.0.0.1", server_port=7860, share=False)
+    print("[GUI] Launching Executive HR AI Assistant Interface on http://127.0.0.1:7860 ...")
+    gui.launch(server_name="127.0.0.1", server_port=7860, share=False, css=MODERN_CSS)

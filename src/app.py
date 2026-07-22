@@ -178,10 +178,10 @@ def main():
     args = parser.parse_args()
 
     if args.gui:
-        from src.gui import build_gui
+        from src.gui import build_gui, MODERN_CSS
         print("🚀 [GUI] Launching HR AI Assistant Web Interface on http://127.0.0.1:7860 ...")
         app_gui = build_gui()
-        app_gui.launch(server_name="127.0.0.1", server_port=7860, share=False)
+        app_gui.launch(server_name="127.0.0.1", server_port=7860, share=False, css=MODERN_CSS)
         return
 
     # Always generate/refresh synthetic test files if no custom PDFs are supplied
