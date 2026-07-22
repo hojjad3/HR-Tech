@@ -14,7 +14,6 @@ from src.strategy import generate_hiring_strategy, HiringStrategy
 from src.matcher import evaluate_candidate, CandidateEvaluation
 from src.exam_generator import generate_technical_exam, TechnicalExam
 from src.mailer import send_candidate_exam_email, format_exam_html
-from src.google_forms import GoogleFormsManager, fetch_form_responses
 from src import storage
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -31,7 +30,6 @@ def process_screening(
     sender_email: str,
     recipient_override: str,
     auto_send_emails: bool,
-    create_google_forms: bool,
     store_results: bool,
 ):
     if not user_prompt.strip():
@@ -105,13 +103,10 @@ def process_screening(
         parsed_resumes.append(parsed)
         vs_manager.index_resume(parsed)
 
-    # 4. Stage 3-5: Evaluation, Exam, Google Forms & Email
+    # 4. Stage 3-5: Evaluation, Exam & Email Dispatch
     candidate_table_data = []
     candidate_records = []
     generated_exams_html = []
-
-    # Initialize Google Forms manager (Automatic)
-    gf_manager = GoogleFormsManager()
 
     for resume in parsed_resumes:
         # Search RAG
@@ -133,7 +128,6 @@ def process_screening(
 
         exam_obj = None
         email_dispatched = False
-        form_url = None
 
         if evaluation.passed:
             # Generate English MCQ exam with custom question count
@@ -144,12 +138,7 @@ def process_screening(
                 num_questions=int(num_questions),
             )
             if exam_obj:
-                # Automatically generate candidate Google Form
-                form_info = gf_manager.create_exam_form(exam_obj)
-                if form_info:
-                    form_url = form_info.get("responder_url")
-
-                exam_html = format_exam_html(exam_obj, google_form_url=form_url)
+                exam_html = format_exam_html(exam_obj)
                 generated_exams_html.append(exam_html)
 
                 if auto_send_emails:
@@ -157,7 +146,6 @@ def process_screening(
                         exam=exam_obj,
                         sender_email=sender_email,
                         override_recipient_email=recipient_override,
-                        google_form_url=form_url,
                     )
 
         record = {
@@ -168,7 +156,6 @@ def process_screening(
             "reasoning": evaluation.reasoning,
             "exam": exam_obj.model_dump() if exam_obj else None,
             "email_dispatched": email_dispatched,
-            "google_form_url": form_url,
         }
         candidate_records.append(record)
 
@@ -178,7 +165,6 @@ def process_screening(
             "Extracted / Target Email": target_email,
             "Match Score": evaluation.match_score,
             "Status": "PASSED ✅" if evaluation.passed else "FAILED ❌",
-            "Google Form": form_url or "N/A",
             "AI Reasoning": evaluation.reasoning,
         })
 
@@ -190,21 +176,6 @@ def process_screening(
             strategy_dict=strategy.model_dump(),
             candidate_records=candidate_records,
         )
-
-        # Save Google Form metadata
-        if gf_manager and session_id:
-            for rec in candidate_records:
-                if rec.get("google_form_url"):
-                    form_info_data = {
-                        "candidate_name": rec["candidate_name"],
-                        "candidate_email": rec["candidate_email"],
-                        "form_id": rec["google_form_url"].split("/d/")[1].split("/")[0] if "/d/" in (rec.get("google_form_url") or "") else "",
-                        "form_url": rec.get("google_form_url", ""),
-                        "responder_url": rec.get("google_form_url", ""),
-                        "total_questions": len(rec["exam"]["questions"]) if rec.get("exam") else 0,
-                    }
-                    if form_info_data["form_id"]:
-                        storage.save_google_form(session_id, form_info_data)
 
     status_msg = f"✅ Pipeline Execution Finished! Processed {len(parsed_resumes)} resumes. Session: `{session_id or 'Unsaved'}`"
 
@@ -292,66 +263,6 @@ def load_session_details_view(session_id: str):
     return html
 
 
-def load_google_forms_table():
-    """Load all Google Forms for display."""
-    forms = storage.get_all_forms()
-    if not forms:
-        return pd.DataFrame(columns=["Candidate", "Email", "Form URL", "Questions", "Responses", "Created", "Job Title"])
-    df = pd.DataFrame(forms)
-    display_cols = ["Candidate", "Email", "Form URL", "Questions", "Responses", "Created", "Job Title"]
-    return df[[c for c in display_cols if c in df.columns]]
-
-
-def fetch_and_store_responses(form_id: str):
-    """Fetch responses from Google Forms API and store them."""
-    if not form_id or not form_id.strip():
-        return "⚠️ Please enter a Form ID.", pd.DataFrame()
-
-    form_id = form_id.strip()
-    responses = fetch_form_responses(form_id)
-
-    if not responses:
-        return f"No responses found for form '{form_id}'.", pd.DataFrame()
-
-    # Store in DB
-    storage.save_form_responses(form_id, responses)
-
-    # Build display table
-    table_data = []
-    for r in responses:
-        table_data.append({
-            "Response ID": r["response_id"][:12] + "...",
-            "Submitted": r["submitted_at"],
-            "Score": f"{r['total_score']}/{r['max_score']}",
-            "Percentage": f"{r['percentage']}%",
-            "Status": "PASSED ✅" if r["passed"] else "FAILED ❌",
-        })
-
-    status_msg = f"✅ Fetched {len(responses)} response(s) for form '{form_id}'."
-    return status_msg, pd.DataFrame(table_data)
-
-
-def load_stored_responses(form_id: str):
-    """Load stored responses from the database."""
-    if not form_id or not form_id.strip():
-        return pd.DataFrame(columns=["Response ID", "Submitted", "Score", "Percentage", "Status"])
-
-    responses = storage.get_form_responses_from_db(form_id.strip())
-    if not responses:
-        return pd.DataFrame(columns=["Response ID", "Submitted", "Score", "Percentage", "Status"])
-
-    table_data = []
-    for r in responses:
-        table_data.append({
-            "Response ID": r["response_id"][:12] + "...",
-            "Submitted": r["submitted_at"],
-            "Score": f"{r['total_score']}/{r['max_score']}",
-            "Percentage": f"{r['percentage']}%",
-            "Status": "PASSED ✅" if r["passed"] else "FAILED ❌",
-        })
-    return pd.DataFrame(table_data)
-
-
 # -----------------------------------------------------------------------------
 # ULTRA-SLEEK MODERN PROFESSIONAL CSS
 # -----------------------------------------------------------------------------
@@ -401,22 +312,6 @@ body, .gradio-container {
     margin: 0;
 }
 
-.hero-badges {
-    display: flex;
-    gap: 10px;
-}
-
-.hero-badge {
-    background: rgba(99, 102, 241, 0.15);
-    color: #a5b4fc;
-    border: 1px solid rgba(99, 102, 241, 0.3);
-    padding: 6px 14px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-}
-
 /* Tabs Styling */
 .tabs {
     background: transparent !important;
@@ -461,7 +356,7 @@ body, .gradio-container {
     box-shadow: none !important;
 }
 
-/* Label styling overrides — Remove blocky blue headers */
+/* Label styling overrides */
 label span, .block-title, label {
     background: transparent !important;
     color: #cbd5e1 !important;
@@ -547,11 +442,6 @@ table td {
     border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
 }
 
-/* Radio & Checkbox Cards */
-.gr-radio, .gr-checkbox {
-    background: transparent !important;
-}
-
 /* File Upload Component */
 .file-preview, .upload-container, .gr-box {
     background: rgba(30, 41, 59, 0.4) !important;
@@ -595,7 +485,7 @@ def build_gui():
         with gr.Tabs():
 
             # ---------------------------------------------------------
-            # TAB 1: 🚀 NEW SCREENING RUN
+            # TAB 1: NEW SCREENING RUN
             # ---------------------------------------------------------
             with gr.TabItem("New Screening Run"):
                 with gr.Row():
@@ -645,7 +535,7 @@ def build_gui():
                             )
 
                         with gr.Group():
-                            gr.Markdown("### 📧 Email Dispatch & Google Forms Options")
+                            gr.Markdown("### 📧 Email Dispatch Options")
                             sender_email_input = gr.Textbox(
                                 label="Sender Email Address",
                                 value="onboarding@resend.dev",
@@ -659,10 +549,6 @@ def build_gui():
                                 auto_send_email_chk = gr.Checkbox(
                                     label="Auto-Dispatch Resend Email",
                                     value=False,
-                                )
-                                create_google_forms_chk = gr.Checkbox(
-                                    label="Create Google Form Exam",
-                                    value=True,
                                 )
                                 store_results_chk = gr.Checkbox(
                                     label="Persist to SQLite Database",
@@ -692,9 +578,9 @@ def build_gui():
             with gr.TabItem("📊 Candidate Dashboard"):
                 gr.Markdown("### Candidate RAG Evaluation & Qualification Results")
                 candidates_dataframe = gr.Dataframe(
-                    headers=["Candidate Name", "Extracted / Target Email", "Match Score", "Status", "Google Form", "AI Reasoning"],
-                    datatype=["str", "str", "number", "str", "str", "str"],
-                    column_count=(6, "fixed"),
+                    headers=["Candidate Name", "Extracted / Target Email", "Match Score", "Status", "AI Reasoning"],
+                    datatype=["str", "str", "number", "str", "str"],
+                    column_count=(5, "fixed"),
                     interactive=True,
                     wrap=True,
                 )
@@ -707,36 +593,7 @@ def build_gui():
                 exams_html_out = gr.HTML(value="No exams generated yet.")
 
             # ---------------------------------------------------------
-            # TAB 5: 📋 GOOGLE FORMS & RESPONSES
-            # ---------------------------------------------------------
-            with gr.TabItem("📋 Google Forms Hub"):
-                gr.Markdown("### 📝 Active Candidate Google Forms")
-
-                refresh_forms_btn = gr.Button("🔄 Refresh Created Forms", variant="secondary", elem_classes=["btn-secondary"])
-                forms_dataframe = gr.Dataframe(
-                    headers=["Candidate", "Email", "Form URL", "Questions", "Responses", "Created", "Job Title"],
-                    interactive=False,
-                    wrap=True,
-                )
-
-                gr.Markdown("---")
-                gr.Markdown("### 📥 Live Google Forms Response Fetcher & Auto-Grader")
-                with gr.Row():
-                    form_id_input = gr.Textbox(
-                        label="Google Form ID",
-                        placeholder="Paste Form ID here...",
-                    )
-                    fetch_responses_btn = gr.Button("📥 Fetch & Grade Submissions", variant="primary", elem_classes=["btn-primary"])
-
-                fetch_status_output = gr.Markdown("")
-                responses_dataframe = gr.Dataframe(
-                    headers=["Response ID", "Submitted", "Score", "Percentage", "Status"],
-                    interactive=False,
-                    wrap=True,
-                )
-
-            # ---------------------------------------------------------
-            # TAB 6: 📁 HISTORICAL SESSIONS & EXPORTS
+            # TAB 5: 📁 HISTORICAL SESSIONS & EXPORTS
             # ---------------------------------------------------------
             with gr.TabItem("📁 History & Exports"):
                 gr.Markdown("### Historical Screening Sessions")
@@ -791,7 +648,6 @@ def build_gui():
                 sender_email_input,
                 recipient_email_override,
                 auto_send_email_chk,
-                create_google_forms_chk,
                 store_results_chk,
             ],
             outputs=[
@@ -826,22 +682,10 @@ def build_gui():
             outputs=[session_preview_html],
         )
 
-        refresh_forms_btn.click(
-            fn=load_google_forms_table,
-            inputs=[],
-            outputs=[forms_dataframe],
-        )
-
-        fetch_responses_btn.click(
-            fn=fetch_and_store_responses,
-            inputs=[form_id_input],
-            outputs=[fetch_status_output, responses_dataframe],
-        )
-
     return app
 
 
 if __name__ == "__main__":
     gui = build_gui()
-    print("[GUI] Launching Executive HR AI Assistant Interface on http://127.0.0.1:7860 ...")
+    print("[GUI] Launching Clean HR AI Assistant Interface on http://127.0.0.1:7860 ...")
     gui.launch(server_name="127.0.0.1", server_port=7860, share=False, css=MODERN_CSS)

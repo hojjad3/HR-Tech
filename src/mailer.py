@@ -7,7 +7,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 
-def format_exam_html(exam: TechnicalExam, google_form_url: str | None = None) -> str:
+def format_exam_html(exam: TechnicalExam) -> str:
     questions_html = ""
     for idx, q in enumerate(exam.questions, start=1):
         options_html = "".join(
@@ -23,25 +23,6 @@ def format_exam_html(exam: TechnicalExam, google_form_url: str | None = None) ->
             <ul style="list-style-type: none; padding-left: 0; margin-bottom: 0;">
                 {options_html}
             </ul>
-        </div>
-        """
-
-    form_button_section = ""
-    if google_form_url and google_form_url.strip():
-        url = google_form_url.strip()
-        form_button_section = f"""
-        <div style="background: #f0fdf4; border: 2px solid #86efac; padding: 20px; border-radius: 12px; text-align: center; margin: 25px 0;">
-            <h3 style="color: #166534; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">📝 Online Google Form Assessment</h3>
-            <p style="color: #15803d; font-size: 14px; margin-bottom: 16px;">Click the button below to complete your MCQ technical assessment directly on Google Forms:</p>
-            <a href="{url}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; text-decoration: none; padding: 16px 42px; border-radius: 8px; font-size: 17px; font-weight: 800; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);">👉 Complete Assessment on Google Forms</a>
-            <p style="color: #64748b; font-size: 12px; margin-top: 12px; margin-bottom: 0;">Direct Link: <a href="{url}" target="_blank" style="color: #2563eb;">{url}</a></p>
-        </div>
-        """
-    else:
-        form_button_section = """
-        <div style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 18px; border-radius: 10px; text-align: center; margin: 25px 0;">
-            <h4 style="color: #1e40af; margin: 0 0 8px 0; font-size: 16px;">📝 Technical Multiple-Choice Assessment Instructions</h4>
-            <p style="color: #1e3a8a; font-size: 14px; margin: 0;">Please review the questions below and reply directly to this email with your chosen answers (e.g. <strong>Q1: B, Q2: A, Q3: C</strong>) within 48 hours.</p>
         </div>
         """
 
@@ -61,10 +42,12 @@ def format_exam_html(exam: TechnicalExam, google_form_url: str | None = None) ->
                 <p style="margin: 0; color: #0369a1; font-size: 14px; font-weight: 600;"><strong>Project Overview:</strong> {exam.product_summary}</p>
             </div>
 
-            {form_button_section}
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 18px; border-radius: 10px; text-align: center; margin: 25px 0;">
+                <h4 style="color: #1e40af; margin: 0 0 8px 0; font-size: 16px;">📝 Technical Multiple-Choice Assessment Instructions</h4>
+                <p style="color: #1e3a8a; font-size: 14px; margin: 0;">Please review the tailored assessment questions below and reply directly to this email with your chosen answers (e.g. <strong>Q1: B, Q2: A, Q3: C</strong>) within 48 hours.</p>
+            </div>
 
             <h3 style="color: #0f172a; margin-top: 25px;">Technical Multiple-Choice Assessment Questions</h3>
-            <p style="color: #334155;">Please review the tailored assessment questions below:</p>
             
             {questions_html}
 
@@ -80,13 +63,12 @@ def send_candidate_exam_email(
     exam: TechnicalExam,
     sender_email: str | None = None,
     override_recipient_email: str | None = None,
-    google_form_url: str | None = None,
 ) -> bool:
     target_recipient = override_recipient_email.strip() if override_recipient_email and override_recipient_email.strip() else exam.candidate_email
     from_address = sender_email.strip() if sender_email and sender_email.strip() else settings.SENDER_EMAIL
 
-    print(f"[MAILER] Preparing technical assessment email for '{exam.candidate_name}' (Target Recipient: {target_recipient}, From: {from_address}, Google Form URL: {google_form_url or 'None'})...")
-    html_body = format_exam_html(exam, google_form_url=google_form_url)
+    print(f"[MAILER] Preparing technical assessment email for '{exam.candidate_name}' (Target Recipient: {target_recipient}, From: {from_address})...")
+    html_body = format_exam_html(exam)
 
     if settings.RESEND_API_KEY:
         print("[MAILER] Dispatching email via Resend API...")
@@ -112,7 +94,6 @@ def send_candidate_exam_email(
         print(f"Subject: Technical Assessment Invitation: {exam.job_title}")
         print("-" * 60)
         print(f"Candidate: {exam.candidate_name}")
-        print(f"Google Form URL: {google_form_url or 'None'}")
         print(f"Questions Count: {len(exam.questions)}")
         print("=" * 60)
         return True
@@ -138,4 +119,4 @@ if __name__ == "__main__":
         ],
     )
 
-    send_candidate_exam_email(sample_exam, google_form_url="https://docs.google.com/forms/d/e/sample_form_id/viewform")
+    send_candidate_exam_email(sample_exam)

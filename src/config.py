@@ -19,10 +19,6 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     PASS_THRESHOLD: int = 75
 
-    # Google Forms Integration
-    GOOGLE_SERVICE_ACCOUNT_FILE: str = "./credentials/google_service_account.json"
-    GOOGLE_FORM_NOTIFY_EMAIL: str | None = None  # Email to share created forms with
-
     def print_status(self) -> None:
         print("[CONFIG] Environment Settings Loaded:")
         print(f"  - LLM Provider: {self.LLM_PROVIDER}")
@@ -33,7 +29,6 @@ class Settings(BaseSettings):
         print(f"  - OpenAI API Key: {'Configured' if self.OPENAI_API_KEY else 'Not Set'}")
         print(f"  - Groq API Key: {'Configured' if self.GROQ_API_KEY else 'Not Set'}")
         print(f"  - Resend API Key: {'Configured' if self.RESEND_API_KEY else 'Not Set'}")
-        print(f"  - Google Service Account: {'Configured' if self.GOOGLE_SERVICE_ACCOUNT_FILE else 'Not Set'}")
 
 
 settings = Settings()
