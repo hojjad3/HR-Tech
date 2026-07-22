@@ -1,8 +1,7 @@
 import json
 import sys
 from pydantic import BaseModel, Field
-from openai import OpenAI
-from src.config import settings
+from src.config import settings, get_llm_client
 from src.matcher import CandidateEvaluation
 from src.strategy import HiringStrategy
 
@@ -60,18 +59,6 @@ You MUST respond strictly with a valid JSON object matching this schema:
 """
 
 
-def _get_llm_client() -> tuple[OpenAI | None, str]:
-    if settings.LLM_PROVIDER == "groq" and settings.GROQ_API_KEY:
-        return OpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=settings.GROQ_API_KEY,
-        ), settings.LLM_MODEL
-    elif settings.OPENAI_API_KEY:
-        return OpenAI(api_key=settings.OPENAI_API_KEY), "gpt-4o-mini"
-    else:
-        return None, "mock"
-
-
 def generate_technical_exam(
     evaluation: CandidateEvaluation,
     strategy: HiringStrategy,
@@ -83,7 +70,7 @@ def generate_technical_exam(
         return None
 
     print(f"[EXAM GEN] Generating {num_questions} tailored English Multiple-Choice Questions (MCQ) for candidate '{evaluation.candidate_name}'...")
-    client, model = _get_llm_client()
+    client, model = get_llm_client()
 
     combined_context = "\n---\n".join(resume_context_chunks) if resume_context_chunks else "No resume context."
 
@@ -191,21 +178,29 @@ RESUME CONTEXT:
 \"\"\"
 """
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": EXAM_GEN_SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": EXAM_GEN_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.3,
+            response_format={"type": "json_object"},
+        )
 
-    data = json.loads(response.choices[0].message.content)
-    exam = TechnicalExam(**data)
+        data = json.loads(response.choices[0].message.content)
+        exam = TechnicalExam(**data)
 
-    print(f"[EXAM GEN] Successfully generated English Multiple-Choice Exam for '{exam.candidate_name}' ({len(exam.questions)} MCQs).")
-    return exam
+        print(f"[EXAM GEN] Successfully generated English Multiple-Choice Exam for '{exam.candidate_name}' ({len(exam.questions)} MCQs).")
+        return exam
+
+    except json.JSONDecodeError as e:
+        print(f"[EXAM GEN] Error: LLM returned invalid JSON: {e}")
+        return None
+    except Exception as e:
+        print(f"[EXAM GEN] Error during LLM API call: {e}")
+        return None
 
 
 if __name__ == "__main__":

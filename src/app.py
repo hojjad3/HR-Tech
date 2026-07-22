@@ -6,10 +6,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse
-import pdfplumber
-from pathlib import Path
 from src.config import settings
-from src.parser import parse_resume_pdf, ParsedResume
+from src.parser import parse_resume_pdf, ParsedResume, extract_email, extract_candidate_name
 from src.vector_store import VectorStoreManager
 from src.strategy import generate_hiring_strategy, HiringStrategy
 from src.matcher import evaluate_candidate
@@ -48,7 +46,6 @@ def create_sample_resumes(target_dir: str) -> list[str]:
     Interested in learning AI engineering.
     """
 
-    file_paths = []
     # Save as text-based fallback parsed objects for testing convenience
     txt_path_1 = os.path.join(target_dir, "ahmad_almansoor_resume.txt")
     txt_path_2 = os.path.join(target_dir, "sara_smith_resume.txt")
@@ -84,7 +81,6 @@ def run_pipeline(user_prompt: str, resume_paths: list[str]) -> None:
             # Handle text file fallback
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
-            from src.parser import extract_email, extract_candidate_name
             parsed = ParsedResume(
                 file_name=os.path.basename(path),
                 candidate_name=extract_candidate_name(content, path),
@@ -139,11 +135,11 @@ def run_pipeline(user_prompt: str, resume_paths: list[str]) -> None:
 
         summary_records.append({
             "Name": evaluation.candidate_name,
-            "Email": evaluation.candidate_email,
+            "Candidate Email": evaluation.candidate_email,
             "Score": f"{evaluation.match_score}/100",
             "Status": status_str,
             "Exam": exam_status,
-            "Email": email_status,
+            "Email Status": email_status,
         })
 
     # Summary Output Table

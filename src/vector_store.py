@@ -10,6 +10,8 @@ def chunk_text(text: str, chunk_size: int = 400, overlap: int = 50) -> list[str]
     words = text.split()
     if not words:
         return []
+    if chunk_size <= overlap:
+        overlap = 0
     chunks = []
     i = 0
     while i < len(words):

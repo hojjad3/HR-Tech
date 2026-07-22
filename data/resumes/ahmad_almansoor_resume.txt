@@ -1,0 +1,11 @@
+Ahmad Al-Mansoor
+    Email: ahmad.almansoor@example.com
+    Title: AI/RAG System Engineer (Arabic NLP Specialist)
+    
+    Summary:
+    Over 6 years of experience in Python backend development, Retrieval-Augmented Generation (RAG), and Arabic Natural Language Processing (NLP).
+    Expert in Vector Databases (ChromaDB / Qdrant), FastEmbed, FastAPI, Docker, and LLM Integration & Fine-Tuning for legal document chunking strategies.
+    
+    Work Experience:
+    - AI Engineer at LegalTech Jordan (2021-Present): Designed RAG engine for Jordanian Civil Law documents using dense vectors, LLM Integration & Fine-Tuning, and hybrid search.
+    - Software Developer at TechCorp (2018-2021): Built microservices using Python, Vector Databases, and PostgreSQL.

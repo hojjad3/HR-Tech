@@ -7,7 +7,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 
-def format_exam_html(exam: TechnicalExam) -> str:
+def format_exam_html(exam: TechnicalExam, google_form_url: str | None = None) -> str:
     questions_html = ""
     for idx, q in enumerate(exam.questions, start=1):
         options_html = "".join(
@@ -47,7 +47,12 @@ def format_exam_html(exam: TechnicalExam) -> str:
             
             {questions_html}
 
-            <p style="margin-top: 25px; color: #0f172a;">Please reply directly to this email with your chosen answers (e.g., Q1: B, Q2: A, Q3: B) within 48 hours.</p>
+            <p style="margin-top: 25px; color: #0f172a;">
+            {f'''<div style="text-align: center; margin: 25px 0;">
+                <a href="{google_form_url}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-size: 16px; font-weight: 700; letter-spacing: 0.5px;">📝 Open Assessment Form</a>
+            </div>
+            <p style="color: #64748b; font-size: 13px; text-align: center;">Click the button above to complete your assessment via Google Forms.</p>''' if google_form_url else 'Please reply directly to this email with your chosen answers (e.g., Q1: B, Q2: A, Q3: B) within 48 hours.'}
+            </p>
             <p style="color: #0f172a;">Best regards,<br><strong>Talent Acquisition & AI Hiring Automation Team</strong></p>
         </div>
     </body>
@@ -60,12 +65,13 @@ def send_candidate_exam_email(
     exam: TechnicalExam,
     sender_email: str | None = None,
     override_recipient_email: str | None = None,
+    google_form_url: str | None = None,
 ) -> bool:
     target_recipient = override_recipient_email.strip() if override_recipient_email and override_recipient_email.strip() else exam.candidate_email
     from_address = sender_email.strip() if sender_email and sender_email.strip() else settings.SENDER_EMAIL
 
     print(f"[MAILER] Preparing technical assessment email for '{exam.candidate_name}' (Target Recipient: {target_recipient}, From: {from_address})...")
-    html_body = format_exam_html(exam)
+    html_body = format_exam_html(exam, google_form_url=google_form_url)
 
     if settings.RESEND_API_KEY:
         print("[MAILER] Dispatching email via Resend API...")

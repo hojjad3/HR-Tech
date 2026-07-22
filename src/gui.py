@@ -1,7 +1,5 @@
 import os
 import sys
-import json
-import tempfile
 import pandas as pd
 import gradio as gr
 
@@ -16,6 +14,7 @@ from src.strategy import generate_hiring_strategy, HiringStrategy
 from src.matcher import evaluate_candidate, CandidateEvaluation
 from src.exam_generator import generate_technical_exam, TechnicalExam
 from src.mailer import send_candidate_exam_email, format_exam_html
+from src.google_forms import GoogleFormsManager, fetch_form_responses
 from src import storage
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -28,9 +27,11 @@ def process_screening(
     uploaded_files: list | None,
     folder_path: str | None,
     num_questions: int,
+    pass_threshold: int,
     sender_email: str,
     recipient_override: str,
     auto_send_emails: bool,
+    create_google_forms: bool,
     store_results: bool,
 ):
     if not user_prompt.strip():
@@ -79,7 +80,7 @@ def process_screening(
             None, None
         )
 
-    print(f"[GUI] Starting screening pipeline for {len(resume_paths)} resumes (Questions per exam: {num_questions})...")
+    print(f"[GUI] Starting screening pipeline for {len(resume_paths)} resumes (Questions: {num_questions}, Threshold: {pass_threshold})...")
 
     # 2. Stage 1: Product-to-Hiring Strategy
     strategy = generate_hiring_strategy(user_prompt)
@@ -104,10 +105,18 @@ def process_screening(
         parsed_resumes.append(parsed)
         vs_manager.index_resume(parsed)
 
-    # 4. Stage 3-5: Evaluation, Exam & Email
+    # 4. Stage 3-5: Evaluation, Exam, Google Forms & Email
     candidate_table_data = []
     candidate_records = []
     generated_exams_html = []
+
+    # Initialize Google Forms manager if needed
+    gf_manager = None
+    if create_google_forms:
+        gf_manager = GoogleFormsManager()
+        if not gf_manager.is_available:
+            print("[GUI] Google Forms not configured. Forms will not be created.")
+            gf_manager = None
 
     for resume in parsed_resumes:
         # Search RAG
@@ -124,10 +133,12 @@ def process_screening(
             candidate_email=resume.candidate_email,
             resume_context_chunks=context_texts,
             strategy=strategy,
+            pass_threshold=pass_threshold,
         )
 
         exam_obj = None
         email_dispatched = False
+        form_url = None
 
         if evaluation.passed:
             # Generate English MCQ exam with custom question count
@@ -141,11 +152,18 @@ def process_screening(
                 exam_html = format_exam_html(exam_obj)
                 generated_exams_html.append(exam_html)
 
+                # Create Google Form if enabled
+                if gf_manager and gf_manager.is_available:
+                    form_info = gf_manager.create_exam_form(exam_obj)
+                    if form_info:
+                        form_url = form_info.get("responder_url")
+
                 if auto_send_emails:
                     email_dispatched = send_candidate_exam_email(
                         exam=exam_obj,
                         sender_email=sender_email,
                         override_recipient_email=recipient_override,
+                        google_form_url=form_url,
                     )
 
         record = {
@@ -156,6 +174,7 @@ def process_screening(
             "reasoning": evaluation.reasoning,
             "exam": exam_obj.model_dump() if exam_obj else None,
             "email_dispatched": email_dispatched,
+            "google_form_url": form_url,
         }
         candidate_records.append(record)
 
@@ -165,6 +184,7 @@ def process_screening(
             "Extracted / Target Email": target_email,
             "Match Score": evaluation.match_score,
             "Status": "PASSED ✅" if evaluation.passed else "FAILED ❌",
+            "Google Form": form_url or "N/A",
             "AI Reasoning": evaluation.reasoning,
         })
 
@@ -176,6 +196,22 @@ def process_screening(
             strategy_dict=strategy.model_dump(),
             candidate_records=candidate_records,
         )
+
+        # Save Google Form metadata
+        if gf_manager and session_id:
+            for rec in candidate_records:
+                if rec.get("google_form_url"):
+                    # Find form_info from manager
+                    form_info_data = {
+                        "candidate_name": rec["candidate_name"],
+                        "candidate_email": rec["candidate_email"],
+                        "form_id": rec["google_form_url"].split("/d/")[1].split("/")[0] if "/d/" in (rec.get("google_form_url") or "") else "",
+                        "form_url": rec.get("google_form_url", ""),
+                        "responder_url": rec.get("google_form_url", ""),
+                        "total_questions": len(rec["exam"]["questions"]) if rec.get("exam") else 0,
+                    }
+                    if form_info_data["form_id"]:
+                        storage.save_google_form(session_id, form_info_data)
 
     status_msg = f"✅ Pipeline Completed! Processed {len(parsed_resumes)} candidates. Session ID: {session_id or 'Not Stored'}"
 
@@ -222,12 +258,115 @@ def load_selected_session_files(session_id: str):
         return None, None
 
 
+def load_session_details_view(session_id: str):
+    """Load session details for the previewer."""
+    if not session_id or not session_id.strip():
+        return "Enter a Session ID to preview."
+    details = storage.get_session_details(session_id.strip())
+    if not details:
+        return f"Session '{session_id}' not found."
+
+    strategy = details.get("strategy", {})
+    candidates = details.get("candidates", [])
+
+    html = f"""
+    <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 800px;">
+        <h3 style="color: #e2e8f0; margin-bottom: 8px;">📋 Session: {details['session_id']}</h3>
+        <p style="color: #94a3b8; font-size: 13px;">Created: {details['timestamp']}</p>
+        <div style="background: #1e293b; padding: 14px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #3b82f6;">
+            <p style="color: #93c5fd; font-weight: 600; margin: 0;">🎯 {strategy.get('job_title', 'N/A')}</p>
+            <p style="color: #cbd5e1; font-size: 13px; margin-top: 6px;">{strategy.get('product_summary', 'N/A')}</p>
+        </div>
+        <h4 style="color: #e2e8f0;">Candidates ({len(candidates)})</h4>
+    """
+    for c in candidates:
+        status_color = "#22c55e" if c["passed"] else "#ef4444"
+        status_text = "PASSED ✅" if c["passed"] else "FAILED ❌"
+        html += f"""
+        <div style="background: #0f172a; padding: 12px; border-radius: 8px; margin: 8px 0; border: 1px solid #334155;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: #e2e8f0; font-weight: 600;">{c['candidate_name']}</span>
+                <span style="color: {status_color}; font-weight: 700;">{c['match_score']}/100 — {status_text}</span>
+            </div>
+            <p style="color: #64748b; font-size: 12px; margin: 4px 0;">{c['candidate_email']}</p>
+            <p style="color: #94a3b8; font-size: 13px; margin-top: 6px;">{c['reasoning'][:200]}...</p>
+        </div>
+        """
+    html += "</div>"
+    return html
+
+
+def load_google_forms_table():
+    """Load all Google Forms for display."""
+    forms = storage.get_all_forms()
+    if not forms:
+        return pd.DataFrame(columns=["Candidate", "Email", "Form URL", "Questions", "Responses", "Created", "Job Title"])
+    df = pd.DataFrame(forms)
+    display_cols = ["Candidate", "Email", "Form URL", "Questions", "Responses", "Created", "Job Title"]
+    return df[[c for c in display_cols if c in df.columns]]
+
+
+def fetch_and_store_responses(form_id: str):
+    """Fetch responses from Google Forms API and store them."""
+    if not form_id or not form_id.strip():
+        return "⚠️ Please enter a Form ID.", pd.DataFrame()
+
+    form_id = form_id.strip()
+    responses = fetch_form_responses(form_id)
+
+    if not responses:
+        return f"No responses found for form '{form_id}'.", pd.DataFrame()
+
+    # Store in DB
+    storage.save_form_responses(form_id, responses)
+
+    # Build display table
+    table_data = []
+    for r in responses:
+        table_data.append({
+            "Response ID": r["response_id"][:12] + "...",
+            "Submitted": r["submitted_at"],
+            "Score": f"{r['total_score']}/{r['max_score']}",
+            "Percentage": f"{r['percentage']}%",
+            "Status": "PASSED ✅" if r["passed"] else "FAILED ❌",
+        })
+
+    status_msg = f"✅ Fetched {len(responses)} response(s) for form '{form_id}'."
+    return status_msg, pd.DataFrame(table_data)
+
+
+def load_stored_responses(form_id: str):
+    """Load stored responses from the database."""
+    if not form_id or not form_id.strip():
+        return pd.DataFrame(columns=["Response ID", "Submitted", "Score", "Percentage", "Status"])
+
+    responses = storage.get_form_responses_from_db(form_id.strip())
+    if not responses:
+        return pd.DataFrame(columns=["Response ID", "Submitted", "Score", "Percentage", "Status"])
+
+    table_data = []
+    for r in responses:
+        table_data.append({
+            "Response ID": r["response_id"][:12] + "...",
+            "Submitted": r["submitted_at"],
+            "Score": f"{r['total_score']}/{r['max_score']}",
+            "Percentage": f"{r['percentage']}%",
+            "Status": "PASSED ✅" if r["passed"] else "FAILED ❌",
+        })
+    return pd.DataFrame(table_data)
+
+
 def build_gui():
-    with gr.Blocks(title="HR AI Assistant - Resume Screening & Assessment Pipeline") as app:
+    custom_css = """
+    .gradio-container { max-width: 1200px !important; }
+    .dark { background-color: #0f172a !important; }
+    """
+
+    with gr.Blocks(title="HR AI Assistant - Resume Screening & Assessment Pipeline", css=custom_css, theme=gr.themes.Soft(primary_hue="blue", secondary_hue="slate")) as app:
         gr.Markdown(
             """
             # 🤖 HR AI Assistant
-            ### Autonomous Resume Screening, RAG Analysis, Adaptive MCQ Assessment & Email Automation Pipeline
+            ### Autonomous Resume Screening, RAG Analysis, Adaptive MCQ Assessment, Google Forms & Email Automation Pipeline
             """
         )
 
@@ -266,14 +405,25 @@ def build_gui():
                         )
 
                         with gr.Group():
-                            gr.Markdown("### ⚙️ Exam & Email Dispatch Settings")
-                            num_questions_slider = gr.Slider(
-                                minimum=1,
-                                maximum=30,
-                                value=3,
-                                step=1,
-                                label="Number of MCQ Questions in Exam",
-                            )
+                            gr.Markdown("### ⚙️ Screening & Exam Settings")
+                            with gr.Row():
+                                num_questions_slider = gr.Slider(
+                                    minimum=1,
+                                    maximum=30,
+                                    value=5,
+                                    step=1,
+                                    label="Number of MCQ Questions",
+                                )
+                                pass_threshold_slider = gr.Slider(
+                                    minimum=30,
+                                    maximum=100,
+                                    value=settings.PASS_THRESHOLD,
+                                    step=5,
+                                    label="Pass Threshold (%)",
+                                )
+
+                        with gr.Group():
+                            gr.Markdown("### 📧 Email & Google Forms Settings")
                             with gr.Row():
                                 sender_email_input = gr.Textbox(
                                     label="Sender Email Address",
@@ -289,6 +439,10 @@ def build_gui():
                             auto_send_email_chk = gr.Checkbox(
                                 label="Auto-Send MCQ Exam Email via Resend API",
                                 value=False,
+                            )
+                            create_google_forms_chk = gr.Checkbox(
+                                label="📝 Create Google Form for Each Candidate",
+                                value=True,
                             )
                             store_results_chk = gr.Checkbox(
                                 label="Save Results to Persistent SQLite DB",
@@ -318,9 +472,9 @@ def build_gui():
             with gr.TabItem("📊 Candidate Matching Dashboard"):
                 gr.Markdown("### Candidate RAG Evaluation & Target Emails")
                 candidates_dataframe = gr.Dataframe(
-                    headers=["Candidate Name", "Extracted / Target Email", "Match Score", "Status", "AI Reasoning"],
-                    datatype=["str", "str", "number", "str", "str"],
-                    column_count=(5, "fixed"),
+                    headers=["Candidate Name", "Extracted / Target Email", "Match Score", "Status", "Google Form", "AI Reasoning"],
+                    datatype=["str", "str", "number", "str", "str", "str"],
+                    column_count=(6, "fixed"),
                     interactive=True,
                     wrap=True,
                 )
@@ -333,7 +487,36 @@ def build_gui():
                 exams_html_out = gr.HTML(value="No exam generated yet.")
 
             # ---------------------------------------------------------
-            # TAB 5: 📁 SAVED RESULTS & EXPORT HISTORY
+            # TAB 5: 📋 GOOGLE FORMS & RESPONSES
+            # ---------------------------------------------------------
+            with gr.TabItem("📋 Google Forms & Responses"):
+                gr.Markdown("### 📝 Google Forms Dashboard — View Created Forms & Fetch Candidate Responses")
+
+                refresh_forms_btn = gr.Button("🔄 Refresh Forms List", variant="secondary")
+                forms_dataframe = gr.Dataframe(
+                    headers=["Candidate", "Email", "Form URL", "Questions", "Responses", "Created", "Job Title"],
+                    interactive=False,
+                    wrap=True,
+                )
+
+                gr.Markdown("---")
+                gr.Markdown("### 📥 Fetch Responses from Google Forms API")
+                with gr.Row():
+                    form_id_input = gr.Textbox(
+                        label="Google Form ID",
+                        placeholder="Enter the Form ID to fetch responses for",
+                    )
+                    fetch_responses_btn = gr.Button("📥 Fetch & Grade Responses", variant="primary")
+
+                fetch_status_output = gr.Markdown("")
+                responses_dataframe = gr.Dataframe(
+                    headers=["Response ID", "Submitted", "Score", "Percentage", "Status"],
+                    interactive=False,
+                    wrap=True,
+                )
+
+            # ---------------------------------------------------------
+            # TAB 6: 📁 SAVED RESULTS & EXPORT HISTORY
             # ---------------------------------------------------------
             with gr.TabItem("📁 Saved Results & Export History"):
                 gr.Markdown("### Historical Screening Sessions (SQLite Database)")
@@ -343,12 +526,18 @@ def build_gui():
                     interactive=False,
                 )
 
+                gr.Markdown("---")
+                gr.Markdown("### 🔍 Session Details Preview")
                 with gr.Row():
                     selected_session_id_input = gr.Textbox(
-                        label="Enter Session ID to Export",
+                        label="Enter Session ID to Preview / Export",
                         placeholder="RUN_20260722_220000",
                     )
-                    export_files_btn = gr.Button("📥 Generate Export Files (CSV & JSON)", variant="primary")
+                    with gr.Column():
+                        preview_session_btn = gr.Button("🔍 Preview Session", variant="secondary")
+                        export_files_btn = gr.Button("📥 Generate Export Files (CSV & JSON)", variant="primary")
+
+                session_preview_html = gr.HTML(value="Select a session to preview.")
 
                 with gr.Row():
                     csv_download_file = gr.File(label="Download CSV Export")
@@ -377,9 +566,11 @@ def build_gui():
                 file_upload_input,
                 folder_path_input,
                 num_questions_slider,
+                pass_threshold_slider,
                 sender_email_input,
                 recipient_email_override,
                 auto_send_email_chk,
+                create_google_forms_chk,
                 store_results_chk,
             ],
             outputs=[
@@ -406,6 +597,25 @@ def build_gui():
             fn=load_selected_session_files,
             inputs=[selected_session_id_input],
             outputs=[csv_download_file, json_download_file],
+        )
+
+        preview_session_btn.click(
+            fn=load_session_details_view,
+            inputs=[selected_session_id_input],
+            outputs=[session_preview_html],
+        )
+
+        # Google Forms tab handlers
+        refresh_forms_btn.click(
+            fn=load_google_forms_table,
+            inputs=[],
+            outputs=[forms_dataframe],
+        )
+
+        fetch_responses_btn.click(
+            fn=fetch_and_store_responses,
+            inputs=[form_id_input],
+            outputs=[fetch_status_output, responses_dataframe],
         )
 
     return app

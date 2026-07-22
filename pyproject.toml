@@ -7,6 +7,8 @@ requires-python = ">=3.11"
 dependencies = [
     "chromadb>=1.5.9",
     "fastembed>=0.8.0",
+    "google-api-python-client>=2.198.0",
+    "google-auth>=2.56.2",
     "gradio>=6.20.0",
     "modal>=1.5.2",
     "openai>=2.47.0",

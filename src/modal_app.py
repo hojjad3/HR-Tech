@@ -28,7 +28,6 @@ image = (
 
 @app.function(
     image=image,
-    secrets=[modal.Secret.from_name("hr-ai-secrets")] if os.getenv("MODAL_ENVIRONMENT") else [],
     timeout=600,
 )
 def run_pipeline_modal(user_prompt: str, resume_files: list[dict]) -> dict:

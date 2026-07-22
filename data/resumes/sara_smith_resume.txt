@@ -1,0 +1,7 @@
+Sara Smith
+    Email: sara.smith@example.com
+    Title: Frontend Developer
+    
+    Summary:
+    3 years of experience in React, HTML, CSS, and Figma design. Basic exposure to Python scripts.
+    Interested in learning AI engineering.

@@ -11,37 +11,71 @@ DB_PATH = os.path.join(RESULTS_DIR, "history.db")
 
 def init_db() -> None:
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS sessions (
-        session_id TEXT PRIMARY KEY,
-        timestamp TEXT,
-        prompt TEXT,
-        job_title TEXT,
-        product_summary TEXT,
-        strategy_json TEXT
-    )
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            session_id TEXT PRIMARY KEY,
+            timestamp TEXT,
+            prompt TEXT,
+            job_title TEXT,
+            product_summary TEXT,
+            strategy_json TEXT
+        )
+        """)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS candidates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT,
-        candidate_name TEXT,
-        candidate_email TEXT,
-        match_score INTEGER,
-        passed INTEGER,
-        reasoning TEXT,
-        exam_json TEXT,
-        email_sent INTEGER,
-        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
-    )
-    """)
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            candidate_name TEXT,
+            candidate_email TEXT,
+            match_score INTEGER,
+            passed INTEGER,
+            reasoning TEXT,
+            exam_json TEXT,
+            email_sent INTEGER,
+            FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+        )
+        """)
 
-    conn.commit()
-    conn.close()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS google_forms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT,
+            candidate_name TEXT,
+            candidate_email TEXT,
+            form_id TEXT UNIQUE,
+            form_url TEXT,
+            responder_url TEXT,
+            total_questions INTEGER,
+            created_at TEXT,
+            FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS form_responses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            form_id TEXT,
+            response_id TEXT UNIQUE,
+            submitted_at TEXT,
+            total_score INTEGER,
+            max_score INTEGER,
+            percentage INTEGER,
+            passed INTEGER,
+            answers_json TEXT,
+            fetched_at TEXT,
+            FOREIGN KEY (form_id) REFERENCES google_forms(form_id)
+        )
+        """)
+
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Database initialization error: {e}")
 
 
 def save_screening_session(
@@ -57,109 +91,304 @@ def save_screening_session(
     product_summary = strategy_dict.get("product_summary", "")
     strategy_json = json.dumps(strategy_dict, ensure_ascii=False)
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
 
-    cursor.execute(
-        "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?)",
-        (session_id, timestamp, prompt, job_title, product_summary, strategy_json),
-    )
-
-    for rec in candidate_records:
-        exam_json = json.dumps(rec.get("exam"), ensure_ascii=False) if rec.get("exam") else None
         cursor.execute(
-            """
-            INSERT INTO candidates (session_id, candidate_name, candidate_email, match_score, passed, reasoning, exam_json, email_sent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                session_id,
-                rec.get("candidate_name", "Unknown"),
-                rec.get("candidate_email", ""),
-                int(rec.get("match_score", 0)),
-                1 if rec.get("passed") else 0,
-                rec.get("reasoning", ""),
-                exam_json,
-                1 if rec.get("email_dispatched") else 0,
-            ),
+            "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?)",
+            (session_id, timestamp, prompt, job_title, product_summary, strategy_json),
         )
 
-    conn.commit()
-    conn.close()
+        for rec in candidate_records:
+            exam_json = json.dumps(rec.get("exam"), ensure_ascii=False) if rec.get("exam") else None
+            cursor.execute(
+                """
+                INSERT INTO candidates (session_id, candidate_name, candidate_email, match_score, passed, reasoning, exam_json, email_sent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    rec.get("candidate_name", "Unknown"),
+                    rec.get("candidate_email", ""),
+                    int(rec.get("match_score", 0)),
+                    1 if rec.get("passed") else 0,
+                    rec.get("reasoning", ""),
+                    exam_json,
+                    1 if rec.get("email_dispatched") else 0,
+                ),
+            )
+
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Error saving session to database: {e}")
 
     # Save JSON snapshot file in ./results/
-    json_filepath = os.path.join(RESULTS_DIR, f"{session_id}.json")
-    snapshot_data = {
-        "session_id": session_id,
-        "timestamp": timestamp,
-        "prompt": prompt,
-        "strategy": strategy_dict,
-        "candidates": candidate_records,
-    }
-    with open(json_filepath, "w", encoding="utf-8") as f:
-        json.dump(snapshot_data, f, indent=2, ensure_ascii=False)
+    try:
+        json_filepath = os.path.join(RESULTS_DIR, f"{session_id}.json")
+        snapshot_data = {
+            "session_id": session_id,
+            "timestamp": timestamp,
+            "prompt": prompt,
+            "strategy": strategy_dict,
+            "candidates": candidate_records,
+        }
+        with open(json_filepath, "w", encoding="utf-8") as f:
+            json.dump(snapshot_data, f, indent=2, ensure_ascii=False)
+    except IOError as e:
+        print(f"[STORAGE] Error saving JSON snapshot: {e}")
 
     print(f"[STORAGE] Successfully saved screening session '{session_id}' to SQLite DB and JSON snapshot.")
     return session_id
 
 
+def save_google_form(
+    session_id: str,
+    form_info: dict,
+) -> None:
+    """Save Google Form metadata to the database."""
+    init_db()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO google_forms
+            (session_id, candidate_name, candidate_email, form_id, form_url, responder_url, total_questions, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                form_info.get("candidate_name", ""),
+                form_info.get("candidate_email", ""),
+                form_info["form_id"],
+                form_info.get("form_url", ""),
+                form_info.get("responder_url", ""),
+                form_info.get("total_questions", 0),
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            ),
+        )
+        conn.commit()
+        conn.close()
+        print(f"[STORAGE] Saved Google Form '{form_info['form_id']}' for candidate '{form_info.get('candidate_name')}'")
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Error saving Google Form: {e}")
+
+
+def save_form_responses(form_id: str, responses: list[dict]) -> None:
+    """Save fetched Google Form responses to the database."""
+    init_db()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        for resp in responses:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO form_responses
+                (form_id, response_id, submitted_at, total_score, max_score, percentage, passed, answers_json, fetched_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    form_id,
+                    resp.get("response_id", ""),
+                    resp.get("submitted_at", ""),
+                    resp.get("total_score", 0),
+                    resp.get("max_score", 0),
+                    resp.get("percentage", 0),
+                    1 if resp.get("passed") else 0,
+                    json.dumps(resp.get("answers", []), ensure_ascii=False),
+                    fetched_at,
+                ),
+            )
+
+        conn.commit()
+        conn.close()
+        print(f"[STORAGE] Saved {len(responses)} response(s) for form '{form_id}'")
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Error saving form responses: {e}")
+
+
+def get_forms_for_session(session_id: str) -> list[dict]:
+    """Get all Google Forms created for a specific session."""
+    init_db()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM google_forms WHERE session_id = ? ORDER BY created_at DESC",
+            (session_id,),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        forms = []
+        for r in rows:
+            forms.append({
+                "candidate_name": r["candidate_name"],
+                "candidate_email": r["candidate_email"],
+                "form_id": r["form_id"],
+                "form_url": r["form_url"],
+                "responder_url": r["responder_url"],
+                "total_questions": r["total_questions"],
+                "created_at": r["created_at"],
+            })
+        return forms
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Error fetching forms: {e}")
+        return []
+
+
+def get_all_forms() -> list[dict]:
+    """Get all Google Forms across all sessions."""
+    init_db()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT gf.*, s.job_title 
+            FROM google_forms gf 
+            LEFT JOIN sessions s ON gf.session_id = s.session_id 
+            ORDER BY gf.created_at DESC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+
+        forms = []
+        for r in rows:
+            # Count responses
+            resp_count = get_response_count(r["form_id"])
+            forms.append({
+                "Session ID": r["session_id"],
+                "Candidate": r["candidate_name"],
+                "Email": r["candidate_email"],
+                "Form URL": r["responder_url"],
+                "Questions": r["total_questions"],
+                "Responses": resp_count,
+                "Created": r["created_at"],
+                "Job Title": r["job_title"] or "N/A",
+                "form_id": r["form_id"],
+            })
+        return forms
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Error fetching all forms: {e}")
+        return []
+
+
+def get_response_count(form_id: str) -> int:
+    """Get the number of stored responses for a form."""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM form_responses WHERE form_id = ?", (form_id,))
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    except sqlite3.Error:
+        return 0
+
+
+def get_form_responses_from_db(form_id: str) -> list[dict]:
+    """Get stored form responses from the database."""
+    init_db()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM form_responses WHERE form_id = ? ORDER BY submitted_at DESC",
+            (form_id,),
+        )
+        rows = cursor.fetchall()
+        conn.close()
+
+        responses = []
+        for r in rows:
+            responses.append({
+                "response_id": r["response_id"],
+                "submitted_at": r["submitted_at"],
+                "total_score": r["total_score"],
+                "max_score": r["max_score"],
+                "percentage": r["percentage"],
+                "passed": bool(r["passed"]),
+                "answers": json.loads(r["answers_json"]) if r["answers_json"] else [],
+                "fetched_at": r["fetched_at"],
+            })
+        return responses
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Error fetching form responses: {e}")
+        return []
+
+
 def get_all_sessions() -> list[dict]:
     init_db()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT session_id, timestamp, job_title, product_summary FROM sessions ORDER BY timestamp DESC")
-    rows = cursor.fetchall()
-    conn.close()
+        cursor.execute("SELECT session_id, timestamp, job_title, product_summary FROM sessions ORDER BY timestamp DESC")
+        rows = cursor.fetchall()
+        conn.close()
 
-    sessions = []
-    for r in rows:
-        sessions.append({
-            "Session ID": r["session_id"],
-            "Timestamp": r["timestamp"],
-            "Target Job Title": r["job_title"],
-            "Product Concept": r["product_summary"],
-        })
-    return sessions
+        sessions = []
+        for r in rows:
+            sessions.append({
+                "Session ID": r["session_id"],
+                "Timestamp": r["timestamp"],
+                "Target Job Title": r["job_title"],
+                "Product Concept": r["product_summary"],
+            })
+        return sessions
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Error fetching sessions: {e}")
+        return []
 
 
 def get_session_details(session_id: str) -> dict | None:
     init_db()
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
-    session_row = cursor.fetchone()
-    if not session_row:
+        cursor.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
+        session_row = cursor.fetchone()
+        if not session_row:
+            conn.close()
+            return None
+
+        cursor.execute("SELECT * FROM candidates WHERE session_id = ?", (session_id,))
+        candidate_rows = cursor.fetchall()
         conn.close()
+
+        candidates = []
+        for c in candidate_rows:
+            exam_dict = json.loads(c["exam_json"]) if c["exam_json"] else None
+            candidates.append({
+                "candidate_name": c["candidate_name"],
+                "candidate_email": c["candidate_email"],
+                "match_score": c["match_score"],
+                "passed": bool(c["passed"]),
+                "reasoning": c["reasoning"],
+                "exam": exam_dict,
+                "email_dispatched": bool(c["email_sent"]),
+            })
+
+        return {
+            "session_id": session_row["session_id"],
+            "timestamp": session_row["timestamp"],
+            "prompt": session_row["prompt"],
+            "strategy": json.loads(session_row["strategy_json"]),
+            "candidates": candidates,
+        }
+    except sqlite3.Error as e:
+        print(f"[STORAGE] Error fetching session details: {e}")
         return None
-
-    cursor.execute("SELECT * FROM candidates WHERE session_id = ?", (session_id,))
-    candidate_rows = cursor.fetchall()
-    conn.close()
-
-    candidates = []
-    for c in candidate_rows:
-        exam_dict = json.loads(c["exam_json"]) if c["exam_json"] else None
-        candidates.append({
-            "candidate_name": c["candidate_name"],
-            "candidate_email": c["candidate_email"],
-            "match_score": c["match_score"],
-            "passed": bool(c["passed"]),
-            "reasoning": c["reasoning"],
-            "exam": exam_dict,
-            "email_dispatched": bool(c["email_sent"]),
-        })
-
-    return {
-        "session_id": session_row["session_id"],
-        "timestamp": session_row["timestamp"],
-        "prompt": session_row["prompt"],
-        "strategy": json.loads(session_row["strategy_json"]),
-        "candidates": candidates,
-    }
 
 
 def export_session_to_csv(session_id: str) -> str:
@@ -207,3 +436,5 @@ if __name__ == "__main__":
     print("[STORAGE TEST] Database initialized at:", DB_PATH)
     sessions = get_all_sessions()
     print(f"[STORAGE TEST] Existing session count: {len(sessions)}")
+    forms = get_all_forms()
+    print(f"[STORAGE TEST] Existing Google Forms count: {len(forms)}")

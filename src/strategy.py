@@ -1,8 +1,7 @@
 import json
 import sys
 from pydantic import BaseModel, Field
-from openai import OpenAI
-from src.config import settings
+from src.config import settings, get_llm_client
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -40,24 +39,9 @@ You MUST respond strictly with a JSON object matching this schema:
 """
 
 
-def _get_llm_client() -> tuple[OpenAI | None, str]:
-    if settings.LLM_PROVIDER == "groq" and settings.GROQ_API_KEY:
-        print("[STRATEGY] Using Groq API client...")
-        return OpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=settings.GROQ_API_KEY,
-        ), settings.LLM_MODEL
-    elif settings.OPENAI_API_KEY:
-        print("[STRATEGY] Using OpenAI API client...")
-        return OpenAI(api_key=settings.OPENAI_API_KEY), "gpt-4o-mini"
-    else:
-        print("[STRATEGY] No LLM API key detected. Using fallback mock client for testing.")
-        return None, "mock"
-
-
 def generate_hiring_strategy(user_prompt: str) -> HiringStrategy:
     print(f"[STRATEGY] Reverse-engineering Product Concept from prompt:\n  '{user_prompt}'")
-    client, model = _get_llm_client()
+    client, model = get_llm_client()
 
     if client is None:
         mock_strategy = HiringStrategy(
@@ -86,25 +70,33 @@ def generate_hiring_strategy(user_prompt: str) -> HiringStrategy:
 
     prompt = f"Product Concept / Business Request:\n\"\"\"{user_prompt}\"\"\""
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": STRATEGY_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-        temperature=0.2,
-        response_format={"type": "json_object"},
-    )
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": STRATEGY_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"},
+        )
 
-    content = response.choices[0].message.content
-    data = json.loads(content)
-    strategy = HiringStrategy(**data)
+        content = response.choices[0].message.content
+        data = json.loads(content)
+        strategy = HiringStrategy(**data)
 
-    print(f"[STRATEGY] Reverse-engineered Product Strategy for Role: '{strategy.job_title}'")
-    print(f"  - Product Summary: {strategy.product_summary}")
-    print(f"  - Must-Have Skills: {', '.join(strategy.must_have_skills)}")
-    print(f"  - Evaluation Criteria: {len(strategy.evaluation_criteria)} benchmarks")
-    return strategy
+        print(f"[STRATEGY] Reverse-engineered Product Strategy for Role: '{strategy.job_title}'")
+        print(f"  - Product Summary: {strategy.product_summary}")
+        print(f"  - Must-Have Skills: {', '.join(strategy.must_have_skills)}")
+        print(f"  - Evaluation Criteria: {len(strategy.evaluation_criteria)} benchmarks")
+        return strategy
+
+    except json.JSONDecodeError as e:
+        print(f"[STRATEGY] Error: LLM returned invalid JSON: {e}")
+        raise ValueError(f"Strategy generation failed: LLM returned invalid JSON — {e}")
+    except Exception as e:
+        print(f"[STRATEGY] Error during LLM API call: {e}")
+        raise RuntimeError(f"Strategy generation failed: {e}")
 
 
 if __name__ == "__main__":

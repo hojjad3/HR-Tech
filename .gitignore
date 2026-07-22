@@ -18,6 +18,8 @@ chroma_db/
 *.pdf
 logs/
 .modal/
+results/
+credentials/
 
 # IDE & OS
 .vscode/
