@@ -35,6 +35,7 @@ web_app = FastAPI()
 
 @app.function(
     image=image,
+    secrets=[modal.Secret.from_dotenv()],
     max_containers=1,
     timeout=600,
 )
@@ -48,6 +49,7 @@ def serve_gui():
 
 @app.function(
     image=image,
+    secrets=[modal.Secret.from_dotenv()],
     timeout=600,
 )
 def run_pipeline_modal(user_prompt: str, resume_files: list[dict]) -> dict:
