@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str | None = None
     SENDER_EMAIL: str = "onboarding@resend.dev"
     LLM_PROVIDER: str = "groq"  # "groq" or "openai"
-    LLM_MODEL: str = "llama-3.3-70b-versatile"
+    LLM_MODEL: str = "llama-3.1-8b-instant"  # High rate limit, ultra-fast model
     CHROMA_PERSIST_DIR: str = "./chroma_db"
     EMBEDDING_MODEL: str = "BAAI/bge-small-en-v1.5"
     PASS_THRESHOLD: int = 75

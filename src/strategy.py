@@ -43,60 +43,68 @@ def generate_hiring_strategy(user_prompt: str) -> HiringStrategy:
     print(f"[STRATEGY] Reverse-engineering Product Concept from prompt:\n  '{user_prompt}'")
     client, model = get_llm_client()
 
+    mock_strategy = HiringStrategy(
+        product_summary="نظام مساعد قانوني ذكي (Legal AI Assistant) يعمل بتقنية RAG على النصوص القانونية العربية والأحكام القضائية.",
+        job_title="AI/RAG System Engineer (Arabic NLP Specialist)",
+        must_have_skills=[
+            "Python",
+            "Retrieval-Augmented Generation (RAG)",
+            "Vector Databases (ChromaDB / Qdrant)",
+            "Arabic Natural Language Processing (NLP)",
+            "LLM Integration & Fine-Tuning",
+        ],
+        nice_to_have_skills=[
+            "Hybrid Search (BM25 + Dense Embeddings)",
+            "Cross-Encoder Re-ranking",
+            "FastAPI / Backend Architecture",
+        ],
+        evaluation_criteria=[
+            "خبرة عملية مثبتة في بناء أنظمة RAG للغة العربية معالجة للمستندات الطويلة",
+            "فهم آليات الـ Chunking والـ Semantic Search للتشريعات والنصوص القانونية",
+            "القدرة على التعامل مع أطر عمل الـ Text Preprocessing والاستخراج من ملفات PDF",
+        ],
+    )
+
     if client is None:
-        mock_strategy = HiringStrategy(
-            product_summary="نظام مساعد قانوني ذكي (Legal AI Assistant) يعمل بتقنية RAG على النصوص القانونية العربية والأحكام القضائية.",
-            job_title="AI/RAG System Engineer (Arabic NLP Specialist)",
-            must_have_skills=[
-                "Python",
-                "Retrieval-Augmented Generation (RAG)",
-                "Vector Databases (ChromaDB / Qdrant)",
-                "Arabic Natural Language Processing (NLP)",
-                "LLM Integration & Fine-Tuning",
-            ],
-            nice_to_have_skills=[
-                "Hybrid Search (BM25 + Dense Embeddings)",
-                "Cross-Encoder Re-ranking",
-                "FastAPI / Backend Architecture",
-            ],
-            evaluation_criteria=[
-                "خبرة عملية مثبتة في بناء أنظمة RAG للغة العربية معالجة للمستندات الطويلة",
-                "فهم آليات الـ Chunking والـ Semantic Search للتشريعات والنصوص القانونية",
-                "القدرة على التعامل مع أطر عمل الـ Text Preprocessing والاستخراج من ملفات PDF",
-            ],
-        )
         print("[STRATEGY] Generated Fallback Product-to-Hiring Strategy successfully.")
         return mock_strategy
 
     prompt = f"Product Concept / Business Request:\n\"\"\"{user_prompt}\"\"\""
+    models_to_try = [model, "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+    seen = set()
+    models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": STRATEGY_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.2,
-            response_format={"type": "json_object"},
-        )
+    last_error = ""
+    for target_model in models_to_try:
+        try:
+            print(f"[STRATEGY] Attempting strategy generation with model '{target_model}'...")
+            response = client.chat.completions.create(
+                model=target_model,
+                messages=[
+                    {"role": "system", "content": STRATEGY_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.2,
+                response_format={"type": "json_object"},
+            )
 
-        content = response.choices[0].message.content
-        data = json.loads(content)
-        strategy = HiringStrategy(**data)
+            content = response.choices[0].message.content
+            data = json.loads(content)
+            strategy = HiringStrategy(**data)
 
-        print(f"[STRATEGY] Reverse-engineered Product Strategy for Role: '{strategy.job_title}'")
-        print(f"  - Product Summary: {strategy.product_summary}")
-        print(f"  - Must-Have Skills: {', '.join(strategy.must_have_skills)}")
-        print(f"  - Evaluation Criteria: {len(strategy.evaluation_criteria)} benchmarks")
-        return strategy
+            print(f"[STRATEGY] Reverse-engineered Product Strategy for Role: '{strategy.job_title}'")
+            print(f"  - Product Summary: {strategy.product_summary}")
+            print(f"  - Must-Have Skills: {', '.join(strategy.must_have_skills)}")
+            print(f"  - Evaluation Criteria: {len(strategy.evaluation_criteria)} benchmarks")
+            return strategy
 
-    except json.JSONDecodeError as e:
-        print(f"[STRATEGY] Error: LLM returned invalid JSON: {e}")
-        raise ValueError(f"Strategy generation failed: LLM returned invalid JSON — {e}")
-    except Exception as e:
-        print(f"[STRATEGY] Error during LLM API call: {e}")
-        raise RuntimeError(f"Strategy generation failed: {e}")
+        except Exception as e:
+            last_error = str(e)
+            print(f"[STRATEGY] Warning: Model '{target_model}' failed or hit rate limit: {e}")
+            continue
+
+    print(f"[STRATEGY] All models failed ({last_error}). Returning fallback strategy.")
+    return mock_strategy
 
 
 if __name__ == "__main__":

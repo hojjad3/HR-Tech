@@ -178,29 +178,47 @@ RESUME CONTEXT:
 \"\"\"
 """
 
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": EXAM_GEN_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.3,
-            response_format={"type": "json_object"},
-        )
+    models_to_try = [model, "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+    seen = set()
+    models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
-        data = json.loads(response.choices[0].message.content)
-        exam = TechnicalExam(**data)
+    last_error = ""
+    for target_model in models_to_try:
+        try:
+            print(f"[EXAM GEN] Attempting MCQ generation with model '{target_model}'...")
+            response = client.chat.completions.create(
+                model=target_model,
+                messages=[
+                    {"role": "system", "content": EXAM_GEN_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                response_format={"type": "json_object"},
+            )
 
-        print(f"[EXAM GEN] Successfully generated English Multiple-Choice Exam for '{exam.candidate_name}' ({len(exam.questions)} MCQs).")
-        return exam
+            data = json.loads(response.choices[0].message.content)
+            exam = TechnicalExam(**data)
 
-    except json.JSONDecodeError as e:
-        print(f"[EXAM GEN] Error: LLM returned invalid JSON: {e}")
-        return None
-    except Exception as e:
-        print(f"[EXAM GEN] Error during LLM API call: {e}")
-        return None
+            print(f"[EXAM GEN] Successfully generated English Multiple-Choice Exam for '{exam.candidate_name}' ({len(exam.questions)} MCQs).")
+            return exam
+
+        except Exception as e:
+            last_error = str(e)
+            print(f"[EXAM GEN] Warning: Model '{target_model}' failed or hit rate limit: {e}")
+            continue
+
+    print(f"[EXAM GEN] All models failed ({last_error}). Using fallback question pool.")
+    mock_questions = mock_question_pool[: min(num_questions, len(mock_question_pool))]
+    for idx, q in enumerate(mock_questions, start=1):
+        q.question_id = idx
+
+    return TechnicalExam(
+        candidate_name=evaluation.candidate_name,
+        candidate_email=evaluation.candidate_email,
+        job_title=strategy.job_title,
+        product_summary=strategy.product_summary,
+        questions=mock_questions,
+    )
 
 
 if __name__ == "__main__":

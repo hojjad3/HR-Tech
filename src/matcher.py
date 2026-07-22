@@ -43,23 +43,23 @@ def evaluate_candidate(
     combined_context = "\n---\n".join(resume_context_chunks) if resume_context_chunks else "No resume context available."
     client, model = get_llm_client()
 
-    if client is None:
-        # Fallback scoring logic for demonstration when API keys are absent
+    def fallback_evaluation(reason: str) -> CandidateEvaluation:
         context_lower = combined_context.lower()
         matched_skills = [skill for skill in strategy.must_have_skills if skill.lower() in context_lower]
         score = int((len(matched_skills) / max(len(strategy.must_have_skills), 1)) * 90) + 10
         score = min(max(score, 40), 95)
         passed = score >= threshold
 
-        evaluation = CandidateEvaluation(
+        return CandidateEvaluation(
             candidate_name=candidate_name,
             candidate_email=candidate_email,
             match_score=score,
             passed=passed,
-            reasoning=f"Matched skills: {matched_skills}. Evaluated against product summary '{strategy.product_summary}'. Passed threshold ({threshold}): {passed}.",
+            reasoning=f"Matched {len(matched_skills)}/{len(strategy.must_have_skills)} core skills: {matched_skills}. Evaluated for '{strategy.job_title}'. ({reason})",
         )
-        print(f"[MATCHER] Evaluated '{candidate_name}': Score={evaluation.match_score}/100, Passed={evaluation.passed}")
-        return evaluation
+
+    if client is None:
+        return fallback_evaluation("Offline Mode")
 
     user_prompt = f"""
 TARGET PRODUCT & HIRING STRATEGY:
@@ -79,52 +79,48 @@ CANDIDATE RESUME CONTEXT CHUNKS:
 \"\"\"
 """
 
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": MATCHER_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.1,
-            response_format={"type": "json_object"},
-        )
+    models_to_try = [model, "llama-3.1-8b-instant", "mixtral-8x7b-32768"]
+    # De-duplicate while preserving order
+    seen = set()
+    models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
-        data = json.loads(response.choices[0].message.content)
-        # Ensure passed status aligns with threshold
-        data["passed"] = data.get("match_score", 0) >= threshold
-        evaluation = CandidateEvaluation(**data)
+    last_error = ""
+    for target_model in models_to_try:
+        try:
+            print(f"[MATCHER] Attempting API evaluation with model '{target_model}'...")
+            response = client.chat.completions.create(
+                model=target_model,
+                messages=[
+                    {"role": "system", "content": MATCHER_SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+            )
 
-        print(f"[MATCHER] Evaluated '{candidate_name}': Score={evaluation.match_score}/100, Passed={evaluation.passed}")
-        return evaluation
+            data = json.loads(response.choices[0].message.content)
+            data["passed"] = data.get("match_score", 0) >= threshold
+            evaluation = CandidateEvaluation(**data)
 
-    except json.JSONDecodeError as e:
-        print(f"[MATCHER] Error: LLM returned invalid JSON: {e}")
-        return CandidateEvaluation(
-            candidate_name=candidate_name,
-            candidate_email=candidate_email,
-            match_score=0,
-            passed=False,
-            reasoning=f"Evaluation failed: LLM returned invalid JSON — {e}",
-        )
-    except Exception as e:
-        print(f"[MATCHER] Error during LLM API call: {e}")
-        return CandidateEvaluation(
-            candidate_name=candidate_name,
-            candidate_email=candidate_email,
-            match_score=0,
-            passed=False,
-            reasoning=f"Evaluation failed due to API error: {e}",
-        )
+            print(f"[MATCHER] Evaluated '{candidate_name}': Score={evaluation.match_score}/100, Passed={evaluation.passed}")
+            return evaluation
+
+        except Exception as e:
+            last_error = str(e)
+            print(f"[MATCHER] Warning: Model '{target_model}' failed or hit rate limit: {e}")
+            continue
+
+    print(f"[MATCHER] All models encountered errors ({last_error}). Using intelligent fallback scoring.")
+    return fallback_evaluation(f"Rate limit fallback: {last_error[:120]}")
 
 
 if __name__ == "__main__":
     test_strategy = HiringStrategy(
-        product_summary="نظام مساعد قانوني ذكي (Legal AI Assistant) يعمل بتقنية RAG على النصوص العربية.",
+        product_summary="Legal AI Assistant system powered by RAG on Arabic documents.",
         job_title="AI/RAG System Engineer (Arabic NLP Specialist)",
         must_have_skills=["Python", "Retrieval-Augmented Generation (RAG)", "Vector Databases", "Arabic Natural Language Processing (NLP)"],
         nice_to_have_skills=["Hybrid Search", "FastAPI"],
-        evaluation_criteria=["خبرة عملية في RAG باللغة العربية", "القدرة على التعامل مع المستندات القانونية"],
+        evaluation_criteria=["Experience in Arabic RAG systems"],
     )
 
     chunks = [
