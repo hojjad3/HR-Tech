@@ -332,17 +332,33 @@ def get_all_sessions() -> list[dict]:
         cursor = conn.cursor()
 
         cursor.execute("SELECT session_id, timestamp, job_title, product_summary FROM sessions ORDER BY timestamp DESC")
-        rows = cursor.fetchall()
-        conn.close()
+        session_rows = cursor.fetchall()
 
         sessions = []
-        for r in rows:
+        for r in session_rows:
+            session_id = r["session_id"]
+            cursor.execute("SELECT candidate_name, match_score, passed FROM candidates WHERE session_id = ?", (session_id,))
+            cand_rows = cursor.fetchall()
+
+            cand_names = []
+            cand_statuses = []
+
+            for c in cand_rows:
+                status_icon = "PASSED ✅" if c["passed"] else "FAILED ❌"
+                cand_name = c["candidate_name"] or "Unknown"
+                cand_names.append(cand_name)
+                cand_statuses.append(f"{cand_name}: {status_icon} ({c['match_score']}/100)")
+
             sessions.append({
-                "Session ID": r["session_id"],
+                "Session ID": session_id,
                 "Timestamp": r["timestamp"],
+                "Candidates": ", ".join(cand_names) if cand_names else "N/A",
+                "Screening Status": ", ".join(cand_statuses) if cand_statuses else "N/A",
                 "Target Job Title": r["job_title"],
                 "Product Concept": r["product_summary"],
             })
+
+        conn.close()
         return sessions
     except sqlite3.Error as e:
         print(f"[STORAGE] Error fetching sessions: {e}")

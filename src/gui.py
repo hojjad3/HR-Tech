@@ -235,7 +235,7 @@ def process_screening(
 def load_history_table():
     sessions = storage.get_all_sessions()
     if not sessions:
-        return pd.DataFrame(columns=["Session ID", "Timestamp", "Target Job Title", "Product Concept"])
+        return pd.DataFrame(columns=["Session ID", "Timestamp", "Candidates", "Screening Status", "Target Job Title", "Product Concept"])
     return pd.DataFrame(sessions)
 
 
@@ -742,8 +742,9 @@ def build_gui():
                 gr.Markdown("### Historical Screening Sessions")
                 refresh_history_btn = gr.Button("🔄 Refresh Session History", variant="secondary", elem_classes=["btn-secondary"])
                 history_dataframe = gr.Dataframe(
-                    headers=["Session ID", "Timestamp", "Target Job Title", "Product Concept"],
+                    headers=["Session ID", "Timestamp", "Candidates", "Screening Status", "Target Job Title", "Product Concept"],
                     interactive=False,
+                    wrap=True,
                 )
 
                 gr.Markdown("---")
