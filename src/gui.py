@@ -22,9 +22,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 def process_screening(
     user_prompt: str,
-    input_mode: str,
     uploaded_files: list | None,
-    folder_path: str | None,
     num_questions: int,
     pass_threshold: int,
     sender_email: str,
@@ -41,42 +39,17 @@ def process_screening(
             None, None
         )
 
-    # 1. Resolve Resume Files
-    resume_paths = []
-
-    if input_mode == "Drag & Drop Files":
-        if not uploaded_files:
-            return (
-                "⚠️ Please upload at least one resume file (PDF or TXT).",
-                "N/A", "N/A", "N/A", "N/A", "N/A",
-                pd.DataFrame(),
-                "No candidate exam generated.",
-                None, None
-            )
-        for f in uploaded_files:
-            resume_paths.append(f.name if hasattr(f, "name") else str(f))
-
-    elif input_mode == "Folder Path Input":
-        if not folder_path or not os.path.exists(folder_path):
-            return (
-                f"⚠️ Folder path '{folder_path}' does not exist.",
-                "N/A", "N/A", "N/A", "N/A", "N/A",
-                pd.DataFrame(),
-                "No candidate exam generated.",
-                None, None
-            )
-        for fname in os.listdir(folder_path):
-            if fname.endswith(".pdf") or fname.endswith(".txt"):
-                resume_paths.append(os.path.join(folder_path, fname))
-
-    if not resume_paths:
+    # 1. Resolve Resume Files from Drag & Drop / File Upload
+    if not uploaded_files:
         return (
-            "⚠️ No PDF or TXT resume files found.",
+            "⚠️ Please upload at least one candidate resume (PDF, TXT, or DOCX).",
             "N/A", "N/A", "N/A", "N/A", "N/A",
             pd.DataFrame(),
             "No candidate exam generated.",
             None, None
         )
+
+    resume_paths = [f.name if hasattr(f, "name") else str(f) for f in uploaded_files]
 
     print(f"[GUI] Starting screening pipeline for {len(resume_paths)} resumes (Questions: {num_questions}, Threshold: {pass_threshold})...")
 
@@ -497,23 +470,10 @@ def build_gui():
                             value="يا سيدي أنا بدي أبني تطبيق قانوني بيساعد المحامين بالأردن، بحيث يرفعوا القضية والـ AI يعمل تحليلات للنسخ والأحكام القديمة ويرتبلهم ملخص واستشارات بناءً على القانون المدني.",
                         )
 
-                        input_mode_radio = gr.Radio(
-                            choices=["Drag & Drop Files", "Folder Path Input"],
-                            value="Drag & Drop Files",
-                            label="Resume Ingestion Source Mode",
-                        )
-
                         file_upload_input = gr.File(
                             label="Upload Candidate Resumes (PDF / TXT / DOCX)",
                             file_count="multiple",
                             file_types=[".pdf", ".txt", ".docx"],
-                            visible=True,
-                        )
-
-                        folder_path_input = gr.Textbox(
-                            label="Local Resume Folder Path",
-                            value="./data/resumes",
-                            visible=False,
                         )
 
                     with gr.Column(scale=1):
@@ -624,25 +584,11 @@ def build_gui():
         # ---------------------------------------------------------
         # EVENT HANDLERS & CALLBACKS
         # ---------------------------------------------------------
-        def toggle_input_mode(mode):
-            if mode == "Drag & Drop Files":
-                return gr.update(visible=True), gr.update(visible=False)
-            else:
-                return gr.update(visible=False), gr.update(visible=True)
-
-        input_mode_radio.change(
-            fn=toggle_input_mode,
-            inputs=[input_mode_radio],
-            outputs=[file_upload_input, folder_path_input],
-        )
-
         run_btn.click(
             fn=process_screening,
             inputs=[
                 user_prompt_input,
-                input_mode_radio,
                 file_upload_input,
-                folder_path_input,
                 num_questions_slider,
                 pass_threshold_slider,
                 sender_email_input,
