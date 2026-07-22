@@ -2,6 +2,8 @@ import os
 import sys
 import tempfile
 import modal
+from fastapi import FastAPI
+import gradio as gr
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
@@ -21,9 +23,27 @@ image = (
         "openai",
         "resend",
         "requests",
+        "gradio",
+        "pandas",
+        "fastapi",
     )
     .add_local_python_source("src")
 )
+
+web_app = FastAPI()
+
+
+@app.function(
+    image=image,
+    max_containers=1,
+    timeout=600,
+)
+@modal.asgi_app()
+def serve_gui():
+    """Serves the Gradio Web GUI dashboard as a public Modal ASGI Web App."""
+    from src.gui import build_gui
+    gui = build_gui()
+    return gr.mount_gradio_app(app=web_app, blocks=gui, path="/")
 
 
 @app.function(
