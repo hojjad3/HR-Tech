@@ -53,22 +53,29 @@ def format_exam_html(exam: TechnicalExam) -> str:
     return html_content
 
 
-def send_candidate_exam_email(exam: TechnicalExam) -> bool:
-    print(f"[MAILER] Preparing technical assessment email for '{exam.candidate_name}' ({exam.candidate_email})...")
+def send_candidate_exam_email(
+    exam: TechnicalExam,
+    sender_email: str | None = None,
+    override_recipient_email: str | None = None,
+) -> bool:
+    target_recipient = override_recipient_email.strip() if override_recipient_email and override_recipient_email.strip() else exam.candidate_email
+    from_address = sender_email.strip() if sender_email and sender_email.strip() else settings.SENDER_EMAIL
+
+    print(f"[MAILER] Preparing technical assessment email for '{exam.candidate_name}' (Target Recipient: {target_recipient}, From: {from_address})...")
     html_body = format_exam_html(exam)
 
     if settings.RESEND_API_KEY:
         print("[MAILER] Dispatching email via Resend API...")
         resend.api_key = settings.RESEND_API_KEY
         params = {
-            "from": settings.SENDER_EMAIL,
-            "to": [exam.candidate_email],
+            "from": from_address,
+            "to": [target_recipient],
             "subject": f"Technical Assessment Invitation: {exam.job_title}",
             "html": html_body,
         }
         try:
             email_res = resend.Emails.send(params)
-            print(f"[MAILER] Email successfully sent via Resend API! ID: {email_res.get('id')}")
+            print(f"[MAILER] Email successfully sent via Resend API to '{target_recipient}'! ID: {email_res.get('id')}")
             return True
         except Exception as e:
             print(f"[MAILER] Error sending email via Resend API: {e}")
@@ -76,13 +83,14 @@ def send_candidate_exam_email(exam: TechnicalExam) -> bool:
     else:
         print("[MAILER] No Resend API Key configured. Printing HTML email preview to terminal (Dry Run Mode):")
         print("=" * 60)
-        print(f"To: {exam.candidate_email}")
+        print(f"From: {from_address}")
+        print(f"To: {target_recipient}")
         print(f"Subject: Technical Assessment Invitation: {exam.job_title}")
         print("-" * 60)
         print(f"Candidate: {exam.candidate_name}")
         print(f"Questions Count: {len(exam.questions)}")
         for q in exam.questions:
-            print(f"\n  Q{q.question_id}: {q.question_text}")
+            print(f"\n  Q{q.question_id}: [{q.topic}] {q.question_text}")
             for i, opt in enumerate(q.options):
                 print(f"    {chr(65+i)}) {opt}")
         print("=" * 60)

@@ -27,6 +27,9 @@ def process_screening(
     input_mode: str,
     uploaded_files: list | None,
     folder_path: str | None,
+    num_questions: int,
+    sender_email: str,
+    recipient_override: str,
     auto_send_emails: bool,
     store_results: bool,
 ):
@@ -76,7 +79,7 @@ def process_screening(
             None, None
         )
 
-    print(f"[GUI] Starting screening pipeline for {len(resume_paths)} resumes...")
+    print(f"[GUI] Starting screening pipeline for {len(resume_paths)} resumes (Questions per exam: {num_questions})...")
 
     # 2. Stage 1: Product-to-Hiring Strategy
     strategy = generate_hiring_strategy(user_prompt)
@@ -105,7 +108,6 @@ def process_screening(
     candidate_table_data = []
     candidate_records = []
     generated_exams_html = []
-    first_exam_dict = None
 
     for resume in parsed_resumes:
         # Search RAG
@@ -128,18 +130,23 @@ def process_screening(
         email_dispatched = False
 
         if evaluation.passed:
+            # Generate English MCQ exam with custom question count
             exam_obj = generate_technical_exam(
                 evaluation=evaluation,
                 strategy=strategy,
                 resume_context_chunks=context_texts,
+                num_questions=int(num_questions),
             )
             if exam_obj:
-                first_exam_dict = exam_obj.model_dump()
                 exam_html = format_exam_html(exam_obj)
                 generated_exams_html.append(exam_html)
 
                 if auto_send_emails:
-                    email_dispatched = send_candidate_exam_email(exam_obj)
+                    email_dispatched = send_candidate_exam_email(
+                        exam=exam_obj,
+                        sender_email=sender_email,
+                        override_recipient_email=recipient_override,
+                    )
 
         record = {
             "candidate_name": evaluation.candidate_name,
@@ -152,9 +159,10 @@ def process_screening(
         }
         candidate_records.append(record)
 
+        target_email = recipient_override.strip() if recipient_override and recipient_override.strip() else evaluation.candidate_email
         candidate_table_data.append({
             "Candidate Name": evaluation.candidate_name,
-            "Extracted Email": evaluation.candidate_email,
+            "Extracted / Target Email": target_email,
             "Match Score": evaluation.match_score,
             "Status": "PASSED ✅" if evaluation.passed else "FAILED ❌",
             "AI Reasoning": evaluation.reasoning,
@@ -169,7 +177,6 @@ def process_screening(
             candidate_records=candidate_records,
         )
 
-    # Prepare GUI Outputs
     status_msg = f"✅ Pipeline Completed! Processed {len(parsed_resumes)} candidates. Session ID: {session_id or 'Not Stored'}"
 
     must_have_str = "\n".join([f"• {s}" for s in strategy.must_have_skills])
@@ -258,6 +265,26 @@ def build_gui():
                             visible=False,
                         )
 
+                        with gr.Group():
+                            gr.Markdown("### ⚙️ Exam & Email Dispatch Settings")
+                            num_questions_slider = gr.Slider(
+                                minimum=1,
+                                maximum=10,
+                                value=3,
+                                step=1,
+                                label="Number of MCQ Questions in Exam (English Only)",
+                            )
+                            with gr.Row():
+                                sender_email_input = gr.Textbox(
+                                    label="Sender Email Address",
+                                    value="onboarding@resend.dev",
+                                    placeholder="onboarding@resend.dev",
+                                )
+                                recipient_email_override = gr.Textbox(
+                                    label="Override Recipient Email (Optional)",
+                                    placeholder="Leave blank to use candidate's extracted email",
+                                )
+
                         with gr.Row():
                             auto_send_email_chk = gr.Checkbox(
                                 label="Auto-Send MCQ Exam Email via Resend API",
@@ -289,9 +316,9 @@ def build_gui():
             # TAB 3: 📊 CANDIDATE MATCHING DASHBOARD
             # ---------------------------------------------------------
             with gr.TabItem("📊 Candidate Matching Dashboard"):
-                gr.Markdown("### Candidate RAG Evaluation & Email Overrides")
+                gr.Markdown("### Candidate RAG Evaluation & Target Emails")
                 candidates_dataframe = gr.Dataframe(
-                    headers=["Candidate Name", "Extracted Email", "Match Score", "Status", "AI Reasoning"],
+                    headers=["Candidate Name", "Extracted / Target Email", "Match Score", "Status", "AI Reasoning"],
                     datatype=["str", "str", "number", "str", "str"],
                     column_count=(5, "fixed"),
                     interactive=True,
@@ -302,7 +329,7 @@ def build_gui():
             # TAB 4: 📝 MCQ ASSESSMENT VIEWER
             # ---------------------------------------------------------
             with gr.TabItem("📝 MCQ Assessment Viewer"):
-                gr.Markdown("### Generated Multiple-Choice Technical Exams")
+                gr.Markdown("### Generated Multiple-Choice Technical Exams (English Only)")
                 exams_html_out = gr.HTML(value="No exam generated yet.")
 
             # ---------------------------------------------------------
@@ -349,6 +376,9 @@ def build_gui():
                 input_mode_radio,
                 file_upload_input,
                 folder_path_input,
+                num_questions_slider,
+                sender_email_input,
+                recipient_email_override,
                 auto_send_email_chk,
                 store_results_chk,
             ],

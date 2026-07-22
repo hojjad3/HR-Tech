@@ -24,13 +24,16 @@ class TechnicalExam(BaseModel):
     candidate_email: str
     job_title: str
     product_summary: str
-    questions: list[MultipleChoiceQuestion] = Field(min_length=3, max_length=5)
+    questions: list[MultipleChoiceQuestion] = Field(min_length=1, max_length=10)
 
 
 EXAM_GEN_SYSTEM_PROMPT = """You are an Expert AI Technical Examiner.
-Your task is to generate 3-5 highly tailored Multiple-Choice Questions (MCQ) for a shortlisted candidate based on their resume context and the specific AI product being built.
+Your task is to generate highly tailored Multiple-Choice Questions (MCQ) for a shortlisted candidate based on their resume context and the specific AI product being built.
 
-Each question MUST contain exactly 4 distinct options (A, B, C, D) and specify the 0-indexed position of the correct answer (0, 1, 2, or 3).
+CRITICAL LANGUAGE & FORMAT REQUIREMENTS:
+1. You MUST generate all questions, options, topics, and explanations STRICTLY IN ENGLISH ONLY. Do NOT use Arabic or any language other than English in the exam content.
+2. Each question MUST contain exactly 4 distinct options (A, B, C, D) and specify the 0-indexed position of the correct answer (0, 1, 2, or 3).
+3. Generate the EXACT number of questions requested by the user.
 
 You MUST respond strictly with a valid JSON object matching this schema:
 {
@@ -41,16 +44,16 @@ You MUST respond strictly with a valid JSON object matching this schema:
   "questions": [
     {
       "question_id": 1,
-      "topic": "string (e.g. Arabic RAG & Chunking Strategy)",
-      "question_text": "string (Technical MCQ Question Prompt)",
+      "topic": "string (e.g. RAG & Vector Chunking Strategy)",
+      "question_text": "string (Technical MCQ Question Prompt in English)",
       "options": [
-        "Option A text",
-        "Option B text",
-        "Option C text",
-        "Option D text"
+        "Option A text in English",
+        "Option B text in English",
+        "Option C text in English",
+        "Option D text in English"
       ],
       "correct_option_index": 0,
-      "explanation": "string (Why option A is correct)"
+      "explanation": "string (Why option A is correct, in English)"
     }
   ]
 }
@@ -73,66 +76,99 @@ def generate_technical_exam(
     evaluation: CandidateEvaluation,
     strategy: HiringStrategy,
     resume_context_chunks: list[str],
+    num_questions: int = 3,
 ) -> TechnicalExam | None:
     if not evaluation.passed:
         print(f"[EXAM GEN] Skipping exam generation for candidate '{evaluation.candidate_name}' (Passed=False).")
         return None
 
-    print(f"[EXAM GEN] Generating tailored Multiple-Choice Exam (MCQ) for passed candidate '{evaluation.candidate_name}'...")
+    print(f"[EXAM GEN] Generating {num_questions} tailored English Multiple-Choice Questions (MCQ) for candidate '{evaluation.candidate_name}'...")
     client, model = _get_llm_client()
 
     combined_context = "\n---\n".join(resume_context_chunks) if resume_context_chunks else "No resume context."
 
     if client is None:
-        mock_questions = [
+        mock_question_pool = [
             MultipleChoiceQuestion(
                 question_id=1,
-                topic="Arabic Legal RAG Chunking",
-                question_text="عند بناء نظام RAG للتشريعات القانونية باللغة العربية، ما هي أفضل استراتيجية تقطيع (Chunking) لمنع ضياع السياق التشريعي؟",
+                topic="Legal RAG Chunking Strategy",
+                question_text="When building a RAG engine for legal documents and codes, which chunking strategy best prevents legislative context loss during vector retrieval?",
                 options=[
-                    "التقطيع الثابت بناءً على عدد الحروف (Fixed-size character chunking 500 chars)",
-                    "التقطيع الهيكلي بناءً على المواد والفقرات القانونية (Semantic Legal Structure Chunking)",
-                    "تقطيع النصوص عشوائياً بناءً على علامات الترقيم فقط",
-                    "عدم استخدام التقطيع وإرسال الملف كاملاً للنظام",
+                    "Fixed-size character chunking at 500 characters",
+                    "Semantic Legal Structure Chunking based on articles and clauses",
+                    "Random text splitting based solely on punctuation marks",
+                    "Sending the entire un-chunked document directly into prompt context",
                 ],
                 correct_option_index=1,
-                explanation="التقطيع الهيكلي المبني على المواد والفقرات يضمن حفظ الوحدة الموضوعية والسياق التشريعي بدون تجزئة المادة القانونية الواحدة.",
+                explanation="Semantic legal structure chunking preserves thematic cohesion and legal clause context without severing indivisible statutory articles.",
             ),
             MultipleChoiceQuestion(
                 question_id=2,
                 topic="Vector Retrieval Precision",
-                question_text="أي من الآليات التالية تضمن أعلى دقة استرجاع (Retrieval Accuracy) للمصطلحات القانونية الدقيقة باللغة العربية؟",
+                question_text="Which of the following retrieval approaches ensures the highest search precision for precise legal terminology?",
                 options=[
-                    "استخدام Dense Embeddings فقط مع Cosine Similarity",
-                    "الدمج بين البحث الدلالي واللفظي (Hybrid Search: BM25 + Dense Vector Search)",
-                    "استخدام البحث النصي التقليدي SQL LIKE Query فقط",
-                    "اعتماد الكلمات المفتاحية العشوائية",
+                    "Dense embeddings with Cosine Similarity only",
+                    "Hybrid Search combining BM25 keyword matching with dense vector search",
+                    "Traditional SQL LIKE text queries only",
+                    "Random keyword indexing",
                 ],
                 correct_option_index=1,
-                explanation="الـ Hybrid Search يجمع بين دقة البحث الكلاسيكي بالكلمات المفتاحية (BM25) وقدرة الـ Dense Embeddings على فهم المعنى الدلالي.",
+                explanation="Hybrid Search combines exact keyword matching (BM25) for specialized legal terms with dense embeddings for semantic search.",
             ),
             MultipleChoiceQuestion(
                 question_id=3,
-                topic="FastEmbed & ChromaDB Integration",
-                question_text="ما هي الميزة الرئيسية لاستخدام مكتبة FastEmbed مقارنة بـ PyTorch/HuggingFace في بيئات الإنتاج خفيفة الوزن؟",
+                topic="FastEmbed & ONNX Runtime Performance",
+                question_text="What is the primary architectural advantage of FastEmbed compared to PyTorch in lightweight production deployments?",
                 options=[
-                    "تحتاج إلى كروت شاشة GPU ضخمة لتطبيق العمليات",
-                    "تستعين بـ ONNX Runtime لتوليد الـ Embeddings بسرعة عالية وبدون أوفرهيد لـ PyTorch",
-                    "تقوم بتخزين البيانات مباشرة في قاعدة بيانات SQL",
-                    "تتطلب الاتصال الدائم بشبكة الإنترنت لتشغيل النماذج",
+                    "Requires high-end dedicated GPU clusters",
+                    "Leverages ONNX Runtime for ultra-fast embedding inference without heavy PyTorch memory overhead",
+                    "Stores data directly into relational SQL tables",
+                    "Requires continuous internet connectivity to run embedding inference",
                 ],
                 correct_option_index=1,
-                explanation="مكتبة FastEmbed تعتمد على ONNX Runtime مما يوفر سرعة عالية وبصمة memory خفيفة جداً بدون تحميل مكتبة PyTorch الثقيلة.",
+                explanation="FastEmbed relies on ONNX Runtime, offering low latency and a minimal memory footprint without loading heavy PyTorch dependencies.",
+            ),
+            MultipleChoiceQuestion(
+                question_id=4,
+                topic="Arabic Text Preprocessing in RAG",
+                question_text="Why is custom text normalization critical when preprocessing Arabic legal text before vector embedding?",
+                options=[
+                    "Arabic text cannot be embedded into vector space",
+                    "Diacritics (Tashkeel) and orthographic variations can alter vector distance if not normalized",
+                    "Vector databases only support ASCII characters",
+                    "Normalization increases LLM context window size",
+                ],
+                correct_option_index=1,
+                explanation="Normalizing diacritics, Alef variants, and Tatweel ensures consistent embedding representations across search queries and document chunks.",
+            ),
+            MultipleChoiceQuestion(
+                question_id=5,
+                topic="Async Vector Search & Concurrency",
+                question_text="How should ChromaDB vector database queries be handled in a high-concurrency FastAPI backend?",
+                options=[
+                    "Block the main asyncio event loop with synchronous queries",
+                    "Offload vector database operations to background worker threads or async task queues",
+                    "Disable database concurrency completely",
+                    "Re-instantiate vector index on every HTTP request",
+                ],
+                correct_option_index=1,
+                explanation="Offloading heavy vector search operations to threadpools or async task queues prevents blocking the main event loop under high traffic.",
             ),
         ]
+
+        # Return requested number of questions (up to 5 in mock mode)
+        selected_questions = mock_question_pool[: min(num_questions, len(mock_question_pool))]
+        for idx, q in enumerate(selected_questions, start=1):
+            q.question_id = idx
+
         exam = TechnicalExam(
             candidate_name=evaluation.candidate_name,
             candidate_email=evaluation.candidate_email,
             job_title=strategy.job_title,
             product_summary=strategy.product_summary,
-            questions=mock_questions,
+            questions=selected_questions,
         )
-        print(f"[EXAM GEN] Successfully generated fallback Multiple-Choice Exam with {len(exam.questions)} questions.")
+        print(f"[EXAM GEN] Successfully generated English Multiple-Choice Exam with {len(exam.questions)} questions.")
         return exam
 
     user_prompt = f"""
@@ -146,6 +182,8 @@ CANDIDATE PROFILE:
 - Email: {evaluation.candidate_email}
 - Match Score: {evaluation.match_score}/100
 - Recruiter Reasoning: {evaluation.reasoning}
+
+REQUESTED NUMBER OF MCQ QUESTIONS: {num_questions}
 
 RESUME CONTEXT:
 \"\"\"
@@ -166,7 +204,7 @@ RESUME CONTEXT:
     data = json.loads(response.choices[0].message.content)
     exam = TechnicalExam(**data)
 
-    print(f"[EXAM GEN] Successfully generated Multiple-Choice Exam for '{exam.candidate_name}' ({len(exam.questions)} MCQ questions).")
+    print(f"[EXAM GEN] Successfully generated English Multiple-Choice Exam for '{exam.candidate_name}' ({len(exam.questions)} MCQs).")
     return exam
 
 
@@ -179,18 +217,19 @@ if __name__ == "__main__":
         reasoning="Strong match in Python, FastAPI, and RAG architectures.",
     )
     test_strategy = HiringStrategy(
-        product_summary="نظام مساعد قانوني ذكي (Legal AI Assistant) يعمل بتقنية RAG على النصوص العربية.",
+        product_summary="Legal AI Assistant system powered by RAG on Arabic legal documents.",
         job_title="AI/RAG System Engineer (Arabic NLP Specialist)",
         must_have_skills=["Python", "Retrieval-Augmented Generation (RAG)", "Vector Databases"],
-        evaluation_criteria=["خبرة في RAG العربية"],
+        evaluation_criteria=["Experience in Arabic RAG systems"],
     )
 
     exam_res = generate_technical_exam(
         evaluation=test_eval,
         strategy=test_strategy,
         resume_context_chunks=["Jane Doe has 5 years of Python & RAG development experience."],
+        num_questions=4,
     )
 
     if exam_res:
-        print("\n--- Generated Multiple Choice Technical Exam JSON ---")
+        print(f"\n--- Generated English Technical Exam ({len(exam_res.questions)} MCQs) ---")
         print(json.dumps(exam_res.model_dump(), indent=2, ensure_ascii=False))
