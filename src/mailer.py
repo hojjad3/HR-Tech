@@ -17,12 +17,31 @@ def format_exam_html(exam: TechnicalExam, google_form_url: str | None = None) ->
             ]
         )
         questions_html += f"""
-        <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; padding: 18px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+        <div style="background-color: #ffffff; border: 1px solid #cbd5e1; border-left: 5px solid #2563eb; padding: 18px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);">
             <h4 style="margin-top: 0; color: #0f172a; font-size: 16px; font-weight: 700; margin-bottom: 10px;">Q{idx}: [{q.topic}]</h4>
             <p style="font-size: 15px; color: #1e293b; font-weight: 600; margin-bottom: 14px; line-height: 1.5;">{q.question_text}</p>
             <ul style="list-style-type: none; padding-left: 0; margin-bottom: 0;">
                 {options_html}
             </ul>
+        </div>
+        """
+
+    form_button_section = ""
+    if google_form_url and google_form_url.strip():
+        url = google_form_url.strip()
+        form_button_section = f"""
+        <div style="background: #f0fdf4; border: 2px solid #86efac; padding: 20px; border-radius: 12px; text-align: center; margin: 25px 0;">
+            <h3 style="color: #166534; margin: 0 0 10px 0; font-size: 18px; font-weight: 700;">📝 Online Google Form Assessment</h3>
+            <p style="color: #15803d; font-size: 14px; margin-bottom: 16px;">Click the button below to complete your MCQ technical assessment directly on Google Forms:</p>
+            <a href="{url}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; text-decoration: none; padding: 16px 42px; border-radius: 8px; font-size: 17px; font-weight: 800; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4);">👉 Complete Assessment on Google Forms</a>
+            <p style="color: #64748b; font-size: 12px; margin-top: 12px; margin-bottom: 0;">Direct Link: <a href="{url}" target="_blank" style="color: #2563eb;">{url}</a></p>
+        </div>
+        """
+    else:
+        form_button_section = """
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; padding: 18px; border-radius: 10px; text-align: center; margin: 25px 0;">
+            <h4 style="color: #1e40af; margin: 0 0 8px 0; font-size: 16px;">📝 Technical Multiple-Choice Assessment Instructions</h4>
+            <p style="color: #1e3a8a; font-size: 14px; margin: 0;">Please review the questions below and reply directly to this email with your chosen answers (e.g. <strong>Q1: B, Q2: A, Q3: C</strong>) within 48 hours.</p>
         </div>
         """
 
@@ -42,18 +61,14 @@ def format_exam_html(exam: TechnicalExam, google_form_url: str | None = None) ->
                 <p style="margin: 0; color: #0369a1; font-size: 14px; font-weight: 600;"><strong>Project Overview:</strong> {exam.product_summary}</p>
             </div>
 
-            <h3 style="color: #0f172a; margin-top: 25px;">Technical Multiple-Choice Assessment</h3>
-            <p style="color: #334155;">Please review and answer the following tailored assessment questions:</p>
+            {form_button_section}
+
+            <h3 style="color: #0f172a; margin-top: 25px;">Technical Multiple-Choice Assessment Questions</h3>
+            <p style="color: #334155;">Please review the tailored assessment questions below:</p>
             
             {questions_html}
 
-            <p style="margin-top: 25px; color: #0f172a;">
-            {f'''<div style="text-align: center; margin: 25px 0;">
-                <a href="{google_form_url}" target="_blank" style="display: inline-block; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-size: 16px; font-weight: 700; letter-spacing: 0.5px;">📝 Open Assessment Form</a>
-            </div>
-            <p style="color: #64748b; font-size: 13px; text-align: center;">Click the button above to complete your assessment via Google Forms.</p>''' if google_form_url else 'Please reply directly to this email with your chosen answers (e.g., Q1: B, Q2: A, Q3: B) within 48 hours.'}
-            </p>
-            <p style="color: #0f172a;">Best regards,<br><strong>Talent Acquisition & AI Hiring Automation Team</strong></p>
+            <p style="color: #0f172a; margin-top: 30px;">Best regards,<br><strong>Talent Acquisition & AI Hiring Automation Team</strong></p>
         </div>
     </body>
     </html>
@@ -70,7 +85,7 @@ def send_candidate_exam_email(
     target_recipient = override_recipient_email.strip() if override_recipient_email and override_recipient_email.strip() else exam.candidate_email
     from_address = sender_email.strip() if sender_email and sender_email.strip() else settings.SENDER_EMAIL
 
-    print(f"[MAILER] Preparing technical assessment email for '{exam.candidate_name}' (Target Recipient: {target_recipient}, From: {from_address})...")
+    print(f"[MAILER] Preparing technical assessment email for '{exam.candidate_name}' (Target Recipient: {target_recipient}, From: {from_address}, Google Form URL: {google_form_url or 'None'})...")
     html_body = format_exam_html(exam, google_form_url=google_form_url)
 
     if settings.RESEND_API_KEY:
@@ -97,13 +112,9 @@ def send_candidate_exam_email(
         print(f"Subject: Technical Assessment Invitation: {exam.job_title}")
         print("-" * 60)
         print(f"Candidate: {exam.candidate_name}")
+        print(f"Google Form URL: {google_form_url or 'None'}")
         print(f"Questions Count: {len(exam.questions)}")
-        for q in exam.questions:
-            print(f"\n  Q{q.question_id}: [{q.topic}] {q.question_text}")
-            for i, opt in enumerate(q.options):
-                print(f"    {chr(65+i)}) {opt}")
         print("=" * 60)
-        print("[MAILER] Dry run email dispatch simulation completed successfully.")
         return True
 
 
@@ -114,48 +125,17 @@ if __name__ == "__main__":
         candidate_name="Jane Doe",
         candidate_email="jane.doe@example.com",
         job_title="AI/RAG System Engineer (Arabic NLP Specialist)",
-        product_summary="نظام مساعد قانوني ذكي (Legal AI Assistant) يعمل بتقنية RAG على النصوص العربية.",
+        product_summary="Legal AI Assistant system powered by RAG on Arabic documents.",
         questions=[
             MultipleChoiceQuestion(
                 question_id=1,
                 topic="Arabic RAG Chunking",
-                question_text="عند بناء نظام RAG للتشريعات باللغة العربية، ما هي أفضل استراتيجية تقطيع؟",
-                options=[
-                    "التقطيع الحرفي الثابت 500 حرف",
-                    "التقطيع الهيكلي بناءً على المواد والفقرات القانونية",
-                    "التقطيع العشوائي",
-                    "عدم استخدام تقطيع",
-                ],
+                question_text="What chunking strategy best preserves statutory context?",
+                options=["Fixed character chunking", "Semantic legal clause chunking", "Random split", "No chunking"],
                 correct_option_index=1,
-                explanation="يضمن حفظ السياق التشريعي",
-            ),
-            MultipleChoiceQuestion(
-                question_id=2,
-                topic="Vector Retrieval",
-                question_text="أي من الآليات التالية تضمن أعلى دقة استرجاع للمصطلحات القانونية؟",
-                options=[
-                    "Dense Embeddings فقط",
-                    "Hybrid Search (BM25 + Dense Vectors)",
-                    "SQL LIKE Query فقط",
-                    "كلمات عشوائية",
-                ],
-                correct_option_index=1,
-                explanation="يجمع بين البحث الدلالي واللفظي",
-            ),
-            MultipleChoiceQuestion(
-                question_id=3,
-                topic="FastEmbed Integration",
-                question_text="ما ميزة FastEmbed مقارنة بـ PyTorch؟",
-                options=[
-                    "تتطلب GPU ضخمة",
-                    "تستعين بـ ONNX Runtime لسرعة وبصمة ذاكرة خفيفة",
-                    "تتطلب اتصال دائم",
-                    "تخزن في SQL",
-                ],
-                correct_option_index=1,
-                explanation="تستخدم ONNX runtime خفيف السعة",
-            ),
+                explanation="Preserves context",
+            )
         ],
     )
 
-    send_candidate_exam_email(sample_exam)
+    send_candidate_exam_email(sample_exam, google_form_url="https://docs.google.com/forms/d/e/sample_form_id/viewform")
