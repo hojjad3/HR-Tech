@@ -594,11 +594,6 @@ def build_gui():
                     <h1 class="hero-title">HR AI Assistant</h1>
                     <p class="hero-subtitle">Autonomous Resume Screening, Reverse-Engineered RAG Analysis & MCQ Exam Automation</p>
                 </div>
-                <div class="hero-badges">
-                    <span class="hero-badge">Autonomous AI Engine</span>
-                    <span class="hero-badge">FastEmbed RAG</span>
-                    <span class="hero-badge">Google Forms API</span>
-                </div>
             </div>
             """
         )
