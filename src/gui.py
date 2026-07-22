@@ -370,8 +370,10 @@ MODERN_CSS = """
 
 body, .gradio-container {
     background-color: #090d16 !important;
-    max-width: 1400px !important;
-    margin: 0 auto !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 16px 24px !important;
 }
 
 /* Header Banner */
@@ -593,7 +595,7 @@ def build_gui():
                     <p class="hero-subtitle">Autonomous Resume Screening, Reverse-Engineered RAG Analysis & MCQ Exam Automation</p>
                 </div>
                 <div class="hero-badges">
-                    <span class="hero-badge">Groq Llama 3.3 70B</span>
+                    <span class="hero-badge">Autonomous AI Engine</span>
                     <span class="hero-badge">FastEmbed RAG</span>
                     <span class="hero-badge">Google Forms API</span>
                 </div>
