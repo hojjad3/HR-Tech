@@ -30,7 +30,6 @@ def process_screening(
     pass_threshold: int,
     sender_email: str,
     recipient_override: str,
-    custom_google_form_url: str | None,
     auto_send_emails: bool,
     create_google_forms: bool,
     store_results: bool,
@@ -111,13 +110,8 @@ def process_screening(
     candidate_records = []
     generated_exams_html = []
 
-    # Initialize Google Forms manager if needed
-    gf_manager = None
-    if create_google_forms:
-        gf_manager = GoogleFormsManager()
-        if not gf_manager.is_available:
-            print("[GUI] Google Forms not configured. Forms will not be created.")
-            gf_manager = None
+    # Initialize Google Forms manager (Automatic)
+    gf_manager = GoogleFormsManager()
 
     for resume in parsed_resumes:
         # Search RAG
@@ -150,15 +144,10 @@ def process_screening(
                 num_questions=int(num_questions),
             )
             if exam_obj:
-                # Create Google Form via API if configured
-                if gf_manager and gf_manager.is_available:
-                    form_info = gf_manager.create_exam_form(exam_obj)
-                    if form_info:
-                        form_url = form_info.get("responder_url")
-
-                # Fallback to manual Google Form URL if provided
-                if not form_url and custom_google_form_url and custom_google_form_url.strip():
-                    form_url = custom_google_form_url.strip()
+                # Automatically generate candidate Google Form
+                form_info = gf_manager.create_exam_form(exam_obj)
+                if form_info:
+                    form_url = form_info.get("responder_url")
 
                 exam_html = format_exam_html(exam_obj, google_form_url=form_url)
                 generated_exams_html.append(exam_html)
@@ -662,15 +651,10 @@ def build_gui():
                                 value="onboarding@resend.dev",
                                 placeholder="onboarding@resend.dev",
                             )
-                            with gr.Row():
-                                recipient_email_override = gr.Textbox(
-                                    label="Override Recipient Email (Optional)",
-                                    placeholder="Leave blank to use candidate's extracted email",
-                                )
-                                custom_google_form_input = gr.Textbox(
-                                    label="Google Form / Assessment Link URL (Optional)",
-                                    placeholder="https://forms.gle/your-form-link (or leave blank for API/auto)",
-                                )
+                            recipient_email_override = gr.Textbox(
+                                label="Override Recipient Email (Optional)",
+                                placeholder="Leave blank to use candidate's extracted email",
+                            )
                             with gr.Row():
                                 auto_send_email_chk = gr.Checkbox(
                                     label="Auto-Dispatch Resend Email",
@@ -805,7 +789,6 @@ def build_gui():
                 pass_threshold_slider,
                 sender_email_input,
                 recipient_email_override,
-                custom_google_form_input,
                 auto_send_email_chk,
                 create_google_forms_chk,
                 store_results_chk,

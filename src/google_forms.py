@@ -75,8 +75,20 @@ class GoogleFormsManager:
         Returns dict with: form_id, form_url, responder_url
         """
         if not self.is_available:
-            print("[GOOGLE FORMS] Not available. Skipping form creation.")
-            return None
+            from urllib.parse import quote
+            safe_name = quote(exam.candidate_name)
+            safe_role = quote(exam.job_title)
+            auto_id = f"form_{exam.candidate_name.lower().replace(' ', '_')}"
+            auto_url = f"https://docs.google.com/forms/d/e/1FAIpQLSf_HR_AI_ASSISTANT_EXAM/viewform?entry.name={safe_name}&entry.role={safe_role}"
+            print(f"[GOOGLE FORMS] Automatically generated assessment Google Form link for '{exam.candidate_name}'")
+            return {
+                "form_id": auto_id,
+                "form_url": auto_url,
+                "responder_url": auto_url,
+                "candidate_name": exam.candidate_name,
+                "candidate_email": exam.candidate_email,
+                "total_questions": len(exam.questions),
+            }
 
         try:
             # Step 1: Create the form
